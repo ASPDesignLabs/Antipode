@@ -25,6 +25,16 @@ void gfx_pal_hsv(Frame *f, int i, float h, float s, float v);
 
 void gfx_ring(Frame *f, int cx, int cy, int r, uint8_t c);          /* a circle's outline */
 void gfx_itoa(int v, char *out);
+/* In season the text is not the terminal's: all-capital strings are set in friendly mixed case (a title in Title Case), small text
+ * is slanted and shadowed, and large text (text16 at scale 2 or more) is lettered: smoothed and rounded, filled in candy stripes,
+ * outlined and shadowed. A scene says which palette indices to use, once a frame. Strings that already have lower case are left alone. */
+void gfx_set_style(int fill1, int fill2, int outline, int shadow);
+/* The season's cheer, drawn with four palette indices a scene lends it (a: one box colour, b: another, r: ribbon and caps, g: a glint):
+ * presents and ornaments that fall and land (a game-over), a string of twinkling bulbs along the top (a title), and sparkles. */
+void gfx_gifts(Frame *f, double t, int a, int b, int r, int g);
+void gfx_gift(Frame *f, int x, int y, int box, int ribbon);       /* one present, 7x7, top left at x,y */
+void gfx_garland(Frame *f, double t, int a, int b, int r, int g);
+void gfx_sparkles(Frame *f, double t, int idx);
 /* A sprite as rows of characters: each is looked up in `map` (a 256-entry table of palette indices; 0 is clear), the top left at x,y. */
 void gfx_blit(Frame *f, int x, int y, const char *const *rows, int nrows, const uint8_t *map);
 /* text that fades by ordered dither (a single palette entry cannot blend): alpha 0..1; tall: 8x16 glyphs, else 8x8 */
