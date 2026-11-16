@@ -2,7 +2,7 @@
 
 A tiny, entirely shader-driven game. You are a hue. **Don't touch your complement** (hue + 180°).
 
-No engine, no assets, no build step: WebGL2 + one fullscreen triangle + a few KB of JS.
+No engine, no assets, no build step: WebGL2 (automatic WebGL1 fallback; force it with `?gl=1`) + one fullscreen triangle + a few KB of JS.
 Runs in any modern browser (target: Xbox/PS5 browsers) and, later, as a small Windows exe.
 
 ## Run
