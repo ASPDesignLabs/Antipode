@@ -183,7 +183,7 @@ static void update(double dt, const Input *in) {
         return;
     }
     int rings = (int)(S.zf / RINGLEN);
-    float speed = 3.0f + (float)(rings < 150 ? rings : 150) * 0.02f;
+    float speed = 1.5f + (float)(rings < 150 ? rings : 150) * 0.03f;   /* 1.5 rings a second to start, 6 by the 150th, as it ever was */
     S.zf += (double)speed * RINGLEN * dt;
     float target = -steer(in) * ROT_RATE;                    /* pressing left rolls the world right: you go left */
     S.rotv += (target - S.rotv) * clampf((float)dt * 14.0f, 0.0f, 1.0f);

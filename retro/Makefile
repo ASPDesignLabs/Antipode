@@ -5,7 +5,7 @@
 CC      ?= cc
 CFLAGS  ?= -O2 -std=gnu11 -Wall -Wextra -Wno-unused-parameter -fno-math-errno
 INC      = -Icore
-SRC      = core/app.c core/gfx.c core/snd.c core/font_vga.c scenes/afterimage.c scenes/prism.c
+SRC      = core/app.c core/gfx.c core/snd.c core/font_vga.c scenes/afterimage.c scenes/prism.c scenes/tidepool.c
 
 all: host
 
