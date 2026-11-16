@@ -88,3 +88,59 @@ void gfx_text8(Frame *f, int x, int y, const char *s, int fg, int scale) {
 }
 
 int gfx_text_width(const char *s, int scale) { return (int)strlen(s) * 8 * scale; }
+
+void gfx_hsv(float h, float s, float v, int *r, int *g, int *b) {
+    h -= m_floor(h);
+    float p = h * 6.0f;
+    float fr = clampf(m_abs(p - 3.0f) - 1.0f, 0.0f, 1.0f);
+    float fg = clampf(2.0f - m_abs(p - 2.0f), 0.0f, 1.0f);
+    float fb = clampf(2.0f - m_abs(p - 4.0f), 0.0f, 1.0f);
+    v = clampf(v, 0.0f, 1.0f);
+    s = clampf(s, 0.0f, 1.0f);
+    *r = (int)((v * (1.0f + s * (fr - 1.0f))) * 63.0f + 0.5f);
+    *g = (int)((v * (1.0f + s * (fg - 1.0f))) * 63.0f + 0.5f);
+    *b = (int)((v * (1.0f + s * (fb - 1.0f))) * 63.0f + 0.5f);
+}
+void gfx_pal_hsv(Frame *f, int i, float h, float s, float v) {
+    int r, g, b;
+    gfx_hsv(h, s, v, &r, &g, &b);
+    gfx_pal(f, i, r, g, b);
+}
+
+void gfx_ring(Frame *f, int cx, int cy, int r, uint8_t c) {   /* midpoint circle */
+    int x = r, y = 0, err = 1 - r;
+    while (x >= y) {
+        gfx_px(f, cx + x, cy + y, c); gfx_px(f, cx - x, cy + y, c); gfx_px(f, cx + x, cy - y, c); gfx_px(f, cx - x, cy - y, c);
+        gfx_px(f, cx + y, cy + x, c); gfx_px(f, cx - y, cy + x, c); gfx_px(f, cx + y, cy - x, c); gfx_px(f, cx - y, cy - x, c);
+        y++;
+        if (err < 0) err += 2 * y + 1; else { x--; err += 2 * (y - x) + 1; }
+    }
+}
+
+void gfx_itoa(int v, char *o) {
+    char t[12]; int n = 0;
+    if (v <= 0) { o[0] = '0'; o[1] = 0; return; }
+    while (v > 0) { t[n++] = (char)('0' + v % 10); v /= 10; }
+    for (int i = 0; i < n; i++) o[i] = t[n - 1 - i];
+    o[n] = 0;
+}
+
+void gfx_text8_c(Frame *f, int y, const char *s, int fg, int scale) { gfx_text8(f, (f->w - gfx_text_width(s, scale)) / 2, y, s, fg, scale); }
+void gfx_text16_c(Frame *f, int y, const char *s, int fg, int scale) { gfx_text16(f, (f->w - gfx_text_width(s, scale)) / 2, y, s, fg, scale); }
+
+void gfx_text_a(Frame *f, int x, int y, const char *s, int fg, int tall, int scale, float alpha) {
+    static const uint8_t BAY[16] = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
+    int gh = tall ? 16 : 8, thr = (int)(clampf(alpha, 0.0f, 1.0f) * 16.0f + 0.5f);
+    for (; *s; s++, x += 8 * scale)
+        for (int row = 0; row < gh; row++) {
+            unsigned bits = tall ? font_vga16[(uint8_t)*s][row] : font_bios8[(uint8_t)*s][row];
+            for (int col = 0; col < 8; col++) {
+                if (!((bits >> (7 - col)) & 1)) continue;
+                for (int yy = 0; yy < scale; yy++)
+                    for (int xx = 0; xx < scale; xx++) {
+                        int px = x + col * scale + xx, py = y + row * scale + yy;
+                        if (BAY[(py & 3) * 4 + (px & 3)] < thr) gfx_px(f, px, py, (uint8_t)fg);
+                    }
+            }
+        }
+}

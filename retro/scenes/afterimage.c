@@ -61,37 +61,20 @@ static int expire_ticks(void) {
 static int age_of(int slot) { return ((S.tick - slot) % SLOTS + SLOTS) % SLOTS; }
 
 /* ---- colour ----------------------------------------------------------- */
-static void hsv(float h, float s, float v, int *r, int *g, int *b) {
-    h -= m_floor(h);
-    float p = h * 6.0f;
-    float fr = clampf(m_abs(p - 3.0f) - 1.0f, 0.0f, 1.0f);
-    float fg = clampf(2.0f - m_abs(p - 2.0f), 0.0f, 1.0f);
-    float fb = clampf(2.0f - m_abs(p - 4.0f), 0.0f, 1.0f);
-    v = clampf(v, 0.0f, 1.0f);
-    *r = (int)((v * (1.0f + s * (fr - 1.0f))) * 63.0f + 0.5f);
-    *g = (int)((v * (1.0f + s * (fg - 1.0f))) * 63.0f + 0.5f);
-    *b = (int)((v * (1.0f + s * (fb - 1.0f))) * 63.0f + 0.5f);
-}
-static void setpal(Frame *f, int i, float h, float s, float v) {
-    int r, g, b;
-    hsv(h, s, v, &r, &g, &b);
-    gfx_pal(f, i, r, g, b);
-}
-
 static void build_pal(Frame *f) {
     static const float LV[LEVELS] = { 0.30f, 0.50f, 0.78f, 1.0f };
     float flip = S.state == ST_DEAD ? 0.5f * smoothstepf(0.0f, 0.5f, (float)S.dead_t) : 0.0f;   /* death: the world turns to its antipode */
     float h0 = S.hue + flip, t = (float)S.clock;
-    for (int i = 0; i < 8; i++) setpal(f, I_BG + i, h0, 0.55f, 0.012f + 0.085f * (float)i / 7.0f);
+    for (int i = 0; i < 8; i++) gfx_pal_hsv(f, I_BG + i, h0, 0.55f, 0.012f + 0.085f * (float)i / 7.0f);
     float pulse = 0.82f + 0.18f * m_sin(t * 3.0f);
-    setpal(f, I_BORDER0, h0 + 0.5f, 0.9f, pulse);
-    setpal(f, I_BORDER1, h0 + 0.5f, 0.9f, pulse * 0.5f);
-    setpal(f, I_PICK, h0, 0.6f, 0.85f + 0.15f * m_sin(t * 5.0f));
-    setpal(f, I_PICKDOT, h0, 0.4f, 1.0f);
-    setpal(f, I_HALO, h0, 0.75f, 0.35f);
-    setpal(f, I_CORE, h0, 0.25f, 1.0f);
-    setpal(f, I_RING, S.hue + 0.5f, 0.7f, 1.0f);
-    setpal(f, I_TEXT, h0, 0.3f, S.state == ST_PLAY ? 0.8f : 0.7f + 0.3f * m_sin(t * 2.5f));
+    gfx_pal_hsv(f, I_BORDER0, h0 + 0.5f, 0.9f, pulse);
+    gfx_pal_hsv(f, I_BORDER1, h0 + 0.5f, 0.9f, pulse * 0.5f);
+    gfx_pal_hsv(f, I_PICK, h0, 0.6f, 0.85f + 0.15f * m_sin(t * 5.0f));
+    gfx_pal_hsv(f, I_PICKDOT, h0, 0.4f, 1.0f);
+    gfx_pal_hsv(f, I_HALO, h0, 0.75f, 0.35f);
+    gfx_pal_hsv(f, I_CORE, h0, 0.25f, 1.0f);
+    gfx_pal_hsv(f, I_RING, S.hue + 0.5f, 0.7f, 1.0f);
+    gfx_pal_hsv(f, I_TEXT, h0, 0.3f, S.state == ST_PLAY ? 0.8f : 0.7f + 0.3f * m_sin(t * 2.5f));
     int ex = expire_ticks();
     for (int s = 0; s < SLOTS; s++) {
         float age = (float)age_of(s) + S.tick_acc;
@@ -101,8 +84,8 @@ static void build_pal(Frame *f) {
         float ripe = age >= LETHAL_FROM ? 1.0f + 0.22f * m_sin(t * 22.0f + (float)s * 0.9f) : 1.0f;   /* ripe trail shimmers */
         for (int l = 0; l < LEVELS; l++) {          /* as it expires a stamp dissolves into the background's tint, not into black */
             int r, g, b, br, bgc, bb;
-            hsv(hue, 0.82f, LV[l] * (1.0f - 0.15f * c) * ripe, &r, &g, &b);
-            hsv(h0, 0.55f, 0.012f + 0.085f * 0.5f, &br, &bgc, &bb);
+            gfx_hsv(hue, 0.82f, LV[l] * (1.0f - 0.15f * c) * ripe, &r, &g, &b);
+            gfx_hsv(h0, 0.55f, 0.012f + 0.085f * 0.5f, &br, &bgc, &bb);
             gfx_pal(f, BASE + s * LEVELS + l, (int)lerpf((float)br, (float)r, fade + 0.0f), (int)lerpf((float)bgc, (float)g, fade), (int)lerpf((float)bb, (float)b, fade));
         }
     }
@@ -190,8 +173,7 @@ static void spawn_pick(void) {
 }
 
 static void load_best(void) {
-    uint8_t b[2];
-    S.best = slot_read(b, 2) == 2 ? b[0] | (b[1] << 8) : 0;
+    S.best = best_get();
 }
 
 static void begin(void) {
@@ -218,9 +200,8 @@ static void die(void) {
     S.state = ST_DEAD; S.dead_t = 0.0;
     snd_sfx(SFX_DIE);
     if (S.score > S.best) {
-        uint8_t b[2] = { (uint8_t)(S.score & 255), (uint8_t)((S.score >> 8) & 255) };
         S.best = S.score;
-        slot_write(b, 2);
+        best_set(S.best);
     }
 }
 
@@ -286,62 +267,43 @@ static void update(double dt, const Input *in) {
 }
 
 /* ---- drawing over the field ------------------------------------------ */
-static void ring(Frame *f, int cx, int cy, int r, uint8_t c) {   /* midpoint circle */
-    int x = r, y = 0, err = 1 - r;
-    while (x >= y) {
-        gfx_px(f, cx + x, cy + y, c); gfx_px(f, cx - x, cy + y, c); gfx_px(f, cx + x, cy - y, c); gfx_px(f, cx - x, cy - y, c);
-        gfx_px(f, cx + y, cy + x, c); gfx_px(f, cx - y, cy + x, c); gfx_px(f, cx + y, cy - x, c); gfx_px(f, cx - y, cy - x, c);
-        y++;
-        if (err < 0) err += 2 * y + 1; else { x--; err += 2 * (y - x) + 1; }
-    }
-}
-
-static void itoa_(int v, char *o) {
-    char t[12]; int n = 0;
-    if (v <= 0) { o[0] = '0'; o[1] = 0; return; }
-    while (v > 0) { t[n++] = (char)('0' + v % 10); v /= 10; }
-    for (int i = 0; i < n; i++) o[i] = t[n - 1 - i];
-    o[n] = 0;
-}
-static void centred8(Frame *f, int y, const char *s) { gfx_text8(f, (W - gfx_text_width(s, 1)) / 2, y, s, I_TEXT, 1); }
-static void centred16(Frame *f, int y, const char *s, int sc) { gfx_text16(f, (W - gfx_text_width(s, sc)) / 2, y, s, I_TEXT, sc); }
-
 static void render(Frame *f) {
     memcpy(f->pix, field, sizeof field);
     build_pal(f);
     char num[16], line[32];
     int px = (int)(S.pick_x + 0.5f), py = (int)(S.pick_y + 0.5f);
-    ring(f, px, py, 4 + (int)(1.5f + 1.5f * m_sin((float)S.clock * 5.0f)), I_PICK);
+    gfx_ring(f, px, py, 4 + (int)(1.5f + 1.5f * m_sin((float)S.clock * 5.0f)), I_PICK);
     gfx_disc(f, px, py, 1, I_PICKDOT);
     int hx = (int)(S.x + 0.5f), hy = (int)(S.y + 0.5f);
     if (S.state == ST_MENU) { gfx_disc(f, hx, hy, 6, I_HALO); gfx_disc(f, hx, hy, 3 + (m_sin((float)S.clock * 2.0f) > 0.0f), I_CORE); }
     else if (S.state == ST_PLAY) gfx_disc(f, hx, hy, 2, I_CORE);
     else {                                                   /* death: a ring runs out from where you were, the world flipping behind it */
         int r = (int)(S.dead_t * 130.0);
-        ring(f, hx, hy, r, I_RING); ring(f, hx, hy, r + 1, I_RING);
+        gfx_ring(f, hx, hy, r, I_RING); gfx_ring(f, hx, hy, r + 1, I_RING);
     }
     if (S.state == ST_MENU) {
-        centred16(f, 14, "ANTIPODE", 2);
-        centred8(f, 52, "A F T E R I M A G E");
-        centred8(f, 128, "YOUR TRAIL RIPENS INTO");
-        centred8(f, 140, "THE COLOUR YOU CANNOT TOUCH");
-        centred8(f, 160, "WASD / STICK / MOUSE / TOUCH");
-        centred8(f, 174, "PRESS ANY KEY");
+        gfx_text16_c(f, 14, "ANTIPODE", I_TEXT, 2);
+        gfx_text8_c(f, 52, "A F T E R I M A G E", I_TEXT, 1);
+        gfx_text8_c(f, 128, "YOUR TRAIL RIPENS INTO", I_TEXT, 1);
+        gfx_text8_c(f, 140, "THE COLOUR YOU CANNOT TOUCH", I_TEXT, 1);
+        gfx_text8_c(f, 160, "WASD / STICK / MOUSE / TOUCH", I_TEXT, 1);
+        gfx_text8_c(f, 174, "PRESS ANY KEY", I_TEXT, 1);
     } else if (S.state == ST_PLAY) {
-        itoa_(S.score, num);
-        centred16(f, 178, num, 1);
+        gfx_itoa(S.score, num);
+        gfx_text16_c(f, 178, num, I_TEXT, 1);
     } else {
-        itoa_(S.score, num);
-        centred8(f, 70, "SCORE");
-        centred16(f, 82, num, 2);
+        gfx_itoa(S.score, num);
+        gfx_text8_c(f, 70, "SCORE", I_TEXT, 1);
+        gfx_text16_c(f, 82, num, I_TEXT, 2);
         for (int i = 0; i < 5; i++) line[i] = "BEST "[i];
-        itoa_(S.best, line + 5);
-        centred8(f, 122, line);
-        if (S.dead_t > 0.6) centred8(f, 150, "PRESS TO RETRY");
+        gfx_itoa(S.best, line + 5);
+        gfx_text8_c(f, 122, line, I_TEXT, 1);
+        if (S.dead_t > 0.6) gfx_text8_c(f, 150, "PRESS TO RETRY", I_TEXT, 1);
     }
 }
 
-const Scene scene_afterimage = { "AFTERIMAGE", W, H, enter, update, render };
+static int idle(void) { return S.state == ST_MENU; }
+const Scene scene_afterimage = { "AFTERIMAGE", W, H, enter, update, render, idle };
 
 /* for the test harness only: where things are, so a scripted bot can play */
 void afterimage_debug(int *score, int *state, float *pick_x, float *pick_y, float *x, float *y) {

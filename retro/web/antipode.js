@@ -35,6 +35,10 @@
   }
 
   X.web_config(1, 70, 100);
+  const want = (new URLSearchParams(location.search).get("mode") || "").toLowerCase().replace(/[^a-z]/g, "");
+  const names = cstr(X.web_scene_names()).split("\n");
+  const first = names.findIndex((n) => n.toLowerCase().replace(/[^a-z]/g, "") === want);
+  X.web_select(first < 0 ? 0 : first);                       // ?mode=prismrun, ?mode=afterimage
   X.web_start();
   let W = X.web_width(), H = X.web_height();
   let img = ctx.createImageData(W, H);
@@ -78,7 +82,7 @@
 
   // ---- keyboard ----
   const CODE = { ArrowUp: "UP", ArrowDown: "DOWN", ArrowLeft: "LEFT", ArrowRight: "RIGHT", KeyW: "W", KeyA: "A", KeyS: "S", KeyD: "D",
-                 Space: "SPACE", Enter: "ENTER", Escape: "ESC", KeyM: "M" };
+                 Space: "SPACE", Enter: "ENTER", Escape: "ESC", KeyM: "M", KeyQ: "Q", KeyE: "E" };
   addEventListener("keydown", (e) => {
     if (e.repeat) return;
     if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault();
@@ -100,9 +104,14 @@
     X.web_pointer(((e.clientX - r.left) * W) / r.width, ((e.clientY - r.top) * H) / r.height, 1);
   }
   canvas.addEventListener("pointerdown", (e) => { unlockAudio(); place(e); X.web_pointer_down(); try { canvas.setPointerCapture(e.pointerId); } catch (_) {} });
+  const release = (e) => {
+    const r = canvas.getBoundingClientRect();
+    X.web_pointer_up(((e.clientX - r.left) * W) / r.width, ((e.clientY - r.top) * H) / r.height);
+    if (e.pointerType !== "mouse") X.web_pointer(0, 0, 0);   // a finger that lifted is gone; the mouse is still there
+  };
   canvas.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse" || e.buttons) place(e); });
-  const lift = (e) => { if (e.pointerType !== "mouse") X.web_pointer(0, 0, 0); };
-  canvas.addEventListener("pointerup", lift); canvas.addEventListener("pointercancel", lift);
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", (e) => { if (e.pointerType !== "mouse") X.web_pointer(0, 0, 0); });
   canvas.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") X.web_pointer(0, 0, 0); });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
