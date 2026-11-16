@@ -8,7 +8,7 @@
 #define SWIPE 36                    /* a drag this far sideways is a swipe */
 
 static const Scene *const SCENES[SCENE_COUNT] = { &scene_afterimage, &scene_prism, &scene_tidepool, &scene_moth };
-static const char *const XMAS_TITLE[SCENE_COUNT] = { "SPARKLER", "ADVENT RUN", "SLEIGH BELLS", "LANTERN" };
+static const char *const XMAS_TITLE[SCENE_COUNT] = { "SPARKLER", "CAROLING RUN", "SLEIGH BELLS", "LANTERN" };
 
 #define NFLAKE 72
 
@@ -111,7 +111,7 @@ static void read_switch(const Input *in, double dt, int *cycle, int *act) {
         if (A.P.down && !A.P.swiped && A.P.t < 0.5) {
             float x = in->ptr_x, dx = in->ptr_x - A.P.x0, dy = in->ptr_y - A.P.y0;
             if (dx * dx + dy * dy < 14.0f * 14.0f) {                               /* a tap: at the sides it switches, else it goes */
-                if (g_theme.on && x > SCENES[A.cur]->w - 104 && in->ptr_y < 14.0f) g_toggle = 1;   /* the corner: the other pair of colours */
+                if (g_theme.on && x > SCENES[A.cur]->w - 104 && in->ptr_y > SCENES[A.cur]->h - 16) g_toggle = 1;   /* the bottom corner: the other pair of colours */
                 else if (x < ZONE) *cycle = -1; else if (x > SCENES[A.cur]->w - ZONE) *cycle = 1; else *act = 1;
             }
         }
@@ -168,7 +168,7 @@ void app_update(double dt) {
             if (A.flake[i].x < -2.0f) A.flake[i].x += 324.0f;
             if (A.flake[i].x > 322.0f) A.flake[i].x -= 324.0f;
         }
-        if (A.idle && snd_music_id() == MU_NONE) snd_music_play(MU_SILENT);
+        if (A.idle && snd_music_id() == MU_NONE && snd_idle()) snd_music_play(MU_SILENT);   /* once the last sound has died away */
     } else snd_music_stop();
     sc->update(dt, &local);
     snd_set_fade(fade_k());
@@ -215,7 +215,7 @@ static void draw_hint(Frame *f) {
     gfx_text_a(f, right ? w - 22 : w - 18, h / 2 - (right ? 16 : 8), ">", I_TEXT_ALL, 1, right ? 2 : 1, a);
     if (g_theme.on) {                                            /* the other pair of colours: a key, a button, or a tap on this */
         const char *t = g_theme.pair ? "[T] RED/GREEN" : "[T] GOLD/BLUE";
-        gfx_text_a(f, w - gfx_text_width(t, 1) - 4, 3, t, I_TEXT_ALL, 0, 1, a);
+        gfx_text_a(f, w - gfx_text_width(t, 1) - 4, h - 12, t, I_TEXT_ALL, 0, 1, a);
     }
 }
 

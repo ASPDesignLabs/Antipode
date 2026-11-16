@@ -145,7 +145,7 @@ static void enter(uint32_t seed) {
 
 static void die(void) {
     S.state = ST_DEAD; S.dead_t = 0.0;
-    snd_sfx(SFX_DIE);
+    snd_sfx(g_theme.on ? SFX_CRASH : SFX_DIE);               /* in season, a comic trombone and a crash */
     snd_music_stop();
     if (S.score > S.best) { S.best = S.score; best_set(S.best); }
 }
@@ -249,8 +249,13 @@ static void build_pal(Frame *f) {
             float tr = clampf(((ha < 0.0f ? -ha : 0.0f) / 700.0f + (hb < 0.0f ? -hb : 0.0f) / 2100.0f) * 0.5f, 0.0f, 1.0f);   /* troughs: deeper, darker water */
             float e = ca + cb, w = e > 0.0f ? cb / e : 0.0f;
             float hue = h0 + 0.5f * w;                                                        /* the arc from your colour to its opposite */
-            float v = 0.07f + 0.50f * (e > 1.3f ? 1.3f : e) - 0.10f * tr;
+            float v = (g_theme.on ? 0.26f : 0.07f) + 0.50f * (e > 1.3f ? 1.3f : e) - 0.10f * tr;
             float s = 0.86f;
+            if (g_theme.on) {                                                                 /* in season the water is a pond of winter blue (deep green for gold and blue), and a wave fades into your colour */
+                float skyh = g_theme.pair ? 0.5f : 0.62f, d = hue - skyh, k = clampf(e * 4.0f, 0.0f, 1.0f);
+                d -= m_floor(d + 0.5f);
+                hue = skyh + d * k; s = 0.45f + 0.41f * k;
+            }
             float sum = ha + hb;
             if (sum >= 1200.0f) {                                                            /* standing water: hot, and from 1800 deadly */
                 float k = clampf((sum - 1200.0f) / 600.0f, 0.0f, 1.0f);
@@ -281,6 +286,7 @@ static void plate(Frame *f, int x, int y, int w, int h) { gfx_rect(f, x, y, w, h
 
 static void render(Frame *f) {
     build_pal(f);
+    if (g_theme.on) gfx_set_style(I_EMIT, I_PEARLDOT, I_PLATE, I_PLATE);
     const int16_t *a = fa[S.pa], *b = fb[S.pa];
     for (int gy = 0; gy < GH; gy++) {
         uint8_t *r0 = f->pix + (gy * 2) * W, *r1 = r0 + W;
@@ -332,7 +338,8 @@ static void render(Frame *f) {
         gfx_text16_c(f, 5, num, I_TEXT, 1);
     } else if (S.state == ST_DEAD) {
         int r = (int)(S.dead_t * 130.0);
-        gfx_ring(f, hx, hy, r, I_RING); gfx_ring(f, hx, hy, r + 1, I_RING);
+        if (g_theme.on) gfx_gifts(f, S.dead_t, I_EMIT, I_PEARL, I_PEARLDOT, I_PLAYER);   /* presents and ornaments tumble down, for a laugh */
+        else { gfx_ring(f, hx, hy, r, I_RING); gfx_ring(f, hx, hy, r + 1, I_RING); }
         plate(f, 60, 54, 200, 108);
         gfx_itoa(S.score, num);
         gfx_text8_c(f, 62, g_theme.on ? "FLAKES" : "PEARLS", I_TEXT, 1);
@@ -342,6 +349,7 @@ static void render(Frame *f) {
         gfx_text8_c(f, 114, line, I_TEXT, 1);
         if (S.dead_t > 0.6) gfx_text8_c(f, 140, "PRESS TO RETRY", I_TEXT, 1);
     } else {
+        if (g_theme.on) { gfx_garland(f, S.clock, I_EMIT, I_PEARL, I_TEXT, I_PHALO); gfx_sparkles(f, S.clock, I_TEXT); }
         plate(f, 24, 10, 272, 52); plate(f, 10, 112, 300, 72);
         gfx_text16_c(f, 14, g_theme.on ? "SLEIGH BELLS" : "TIDEPOOL", I_TEXT, 2);
         gfx_text8_c(f, 50, g_theme.on ? "THE BELLS ANSWER IN KIND" : "A POOL THAT ANSWERS IN KIND", I_TEXT, 1);

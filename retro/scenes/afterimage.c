@@ -72,7 +72,8 @@ static void build_pal(Frame *f) {
     static const float LV[LEVELS] = { 0.30f, 0.50f, 0.78f, 1.0f };
     float flip = S.state == ST_DEAD ? 0.5f * smoothstepf(0.0f, 0.5f, (float)S.dead_t) : 0.0f;   /* death: the world turns to its antipode */
     float h0 = S.hue + flip, t = (float)S.clock;
-    for (int i = 0; i < 8; i++) gfx_pal_hsv(f, I_BG + i, h0, 0.55f, 0.012f + 0.085f * (float)i / 7.0f);
+    float bgh = g_theme.on ? (g_theme.pair ? 0.5f : 0.667f) + flip : h0;               /* in season the night is a winter blue (or a deep green), not black */
+    for (int i = 0; i < 8; i++) gfx_pal_hsv(f, I_BG + i, bgh, g_theme.on ? 0.50f : 0.55f, g_theme.on ? 0.14f + 0.17f * (float)i / 7.0f : 0.012f + 0.085f * (float)i / 7.0f);
     float pulse = 0.82f + 0.18f * m_sin(t * 3.0f);
     gfx_pal_hsv(f, I_BORDER0, h0 + 0.5f, 0.9f, pulse);
     if (g_theme.on) gfx_pal_hsv(f, I_BORDER1, h0 + 0.5f, 0.10f, 0.80f * pulse);            /* the other stripe is white */
@@ -93,7 +94,7 @@ static void build_pal(Frame *f) {
         for (int l = 0; l < LEVELS; l++) {          /* as it expires a stamp dissolves into the background's tint, not into black */
             int r, g, b, br, bgc, bb;
             gfx_hsv(hue, 0.82f, LV[l] * (1.0f - 0.15f * c) * ripe, &r, &g, &b);
-            gfx_hsv(h0, 0.55f, 0.012f + 0.085f * 0.5f, &br, &bgc, &bb);
+            gfx_hsv(bgh, g_theme.on ? 0.50f : 0.55f, g_theme.on ? 0.14f + 0.17f * 0.5f : 0.012f + 0.085f * 0.5f, &br, &bgc, &bb);
             gfx_pal(f, BASE + s * LEVELS + l, (int)lerpf((float)br, (float)r, fade + 0.0f), (int)lerpf((float)bgc, (float)g, fade), (int)lerpf((float)bb, (float)b, fade));
         }
     }
@@ -214,7 +215,7 @@ static void enter(uint32_t seed) {
 
 static void die(void) {
     S.state = ST_DEAD; S.dead_t = 0.0;
-    snd_sfx(SFX_DIE);
+    snd_sfx(g_theme.on ? SFX_CRASH : SFX_DIE);               /* in season, a comic trombone and a crash */
     snd_music_stop();
     if (S.score > S.best) {
         S.best = S.score;
@@ -289,6 +290,7 @@ static void update(double dt, const Input *in) {
 
 /* ---- drawing over the field ------------------------------------------ */
 static void render(Frame *f) {
+    if (g_theme.on) gfx_set_style(I_BORDER0, I_BORDER1, I_BG, I_BG);
     if (g_theme.on) {                                       /* ripe trail is striped as well as hot: the danger is not only a colour */
         for (int y = 0; y < H; y++)
             for (int x = 0; x < W; x++) {
@@ -318,15 +320,12 @@ static void render(Frame *f) {
     else {                                                   /* death: a ring runs out from where you were, the world flipping behind it */
         int r = (int)(S.dead_t * 130.0);
         gfx_ring(f, hx, hy, r, I_RING); gfx_ring(f, hx, hy, r + 1, I_RING);
-        if (g_theme.on) for (int k = 0; k < 16; k++) {        /* a bauble breaking: shards thrown out */
-            float a = (float)k * (TAU_F / 16.0f) + 0.2f * (float)(k & 1), d = (float)S.dead_t * (70.0f + 12.0f * (float)(k % 3));
-            int sx2 = hx + (int)(m_cos(a) * d), sy2 = hy + (int)(m_sin(a) * d);
-            gfx_px(f, sx2, sy2, I_RING); gfx_px(f, sx2 + 1, sy2, I_RING);
-        }
+        if (g_theme.on) gfx_gifts(f, S.dead_t, I_BORDER0, I_PICK, I_BORDER1, I_CORE);   /* presents and ornaments tumble down, for a laugh */
     }
     if (S.state == ST_MENU) {
+        if (g_theme.on) { gfx_garland(f, S.clock, I_BORDER0, I_PICK, I_TEXT, I_HALO); gfx_sparkles(f, S.clock, I_TEXT); }
         gfx_text16_c(f, 14, g_theme.on ? "SPARKLER" : "ANTIPODE", I_TEXT, 2);
-        gfx_text8_c(f, 52, g_theme.on ? "A SPARKLER ON A DARK NIGHT" : "A F T E R I M A G E", I_TEXT, 1);
+        gfx_text8_c(f, 52, g_theme.on ? "A SPARKLER ON A SNOWY NIGHT" : "A F T E R I M A G E", I_TEXT, 1);
         gfx_text8_c(f, 128, "YOUR TRAIL RIPENS INTO", I_TEXT, 1);
         gfx_text8_c(f, 140, "THE COLOUR YOU CANNOT TOUCH", I_TEXT, 1);
         gfx_text8_c(f, 160, "WASD / STICK / MOUSE / TOUCH", I_TEXT, 1);

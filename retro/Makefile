@@ -41,8 +41,31 @@ build/melody: test/melody.c core/snd.c core/snd.h core/theme.c core/core.h
 	@mkdir -p build
 	$(CC) -O1 -std=gnu11 -fno-math-errno -Icore -o $@ test/melody.c core/theme.c -lm
 
-test-audio: build/melody
+build/crash: test/crash.c core/snd.c core/snd.h core/theme.c core/core.h
+	@mkdir -p build
+	$(CC) -O1 -std=gnu11 -fno-math-errno -Icore -o $@ test/crash.c core/theme.c -lm
+
+build/mix: test/mix.c core/snd.c core/snd.h core/theme.c core/core.h
+	@mkdir -p build
+	$(CC) -O1 -std=gnu11 -fno-math-errno -Icore -o $@ test/mix.c core/theme.c -lm
+
+test-audio: build/melody build/crash build/mix
 	python3 test/melody.py build/melody
+	python3 test/mix.py build/mix
+	python3 test/crash.py build/crash
+
+# Lantern's season rules, one at a time.
+build/moth_fx: test/moth_fx.c scenes/moth.c core/gfx.c core/theme.c core/snd.c core/font_vga.c core/*.h
+	@mkdir -p build
+	$(CC) -O1 -std=gnu11 -fno-math-errno -Icore -o $@ test/moth_fx.c core/gfx.c core/theme.c core/snd.c core/font_vga.c -lm
+
+build/prism_fx: test/prism_fx.c scenes/prism.c core/gfx.c core/theme.c core/snd.c core/font_vga.c core/*.h
+	@mkdir -p build
+	$(CC) -O1 -std=gnu11 -fno-math-errno -Icore -o $@ test/prism_fx.c core/gfx.c core/theme.c core/snd.c core/font_vga.c -lm
+
+test-game: build/moth_fx build/prism_fx
+	./build/moth_fx
+	./build/prism_fx
 
 smoke: build/host
 	@mkdir -p build/smoke
@@ -53,8 +76,9 @@ smoke: build/host
 	HOST_SCENE=2 ./build/host bot 60
 	HOST_SCENE=3 ./build/host bot 60
 	HOST_THEME=classic ./build/host bot 60
+	$(MAKE) test-game
 	./build/host bench 20
 
 clean:
 	rm -rf build
-.PHONY: all host web play smoke test-audio clean
+.PHONY: all host web play smoke test-audio test-game clean

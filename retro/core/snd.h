@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #define SND_RATE 44100
-enum { SFX_START, SFX_PICKUP, SFX_DIE };
+enum { SFX_START, SFX_PICKUP, SFX_DIE, SFX_CRASH };   /* SFX_CRASH, in season: the carol breaks off, a sad trombone, then cymbals and a kick drum */
 enum { MU_NONE, MU_SILENT, MU_JINGLE, MU_DECK, MU_JOY, MU_WISH };
 
 void snd_init(void);
@@ -14,6 +14,7 @@ void snd_set_fade(float k);                    /* 0..1 on top of it: the picture
 void snd_sfx(int id);
 void snd_sfx_note(int id, int note);           /* a pitched effect, note counted in pentatonic steps */
 void snd_render(int16_t *out, int frames);     /* interleaved stereo */
+int  snd_idle(void);                           /* nothing is sounding (the delay's tail aside) */
 
 /* carols (only in season: g_theme.on) */
 void snd_music_play(int id);                   /* from the top; MU_NONE stops */
