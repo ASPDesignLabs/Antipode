@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>Antipode</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: none; outline: none; cursor: crosshair; }
+  #fail { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: #ddd; background: #000;
+          font: 16px system-ui, sans-serif; padding: 24px; text-align: center; white-space: pre-wrap; }
+  #fail[hidden] { display: none; }
+  #perf { position: fixed; left: 8px; top: 8px; color: #8f8; font: 12px/1.4 monospace; white-space: pre; pointer-events: none; }
+  #perf[hidden] { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c" tabindex="0"></canvas>
+<div id="perf" hidden></div>
+<div id="fail" hidden></div>
+<!--SCRIPT-->
+</body>
+</html>

@@ -5,6 +5,8 @@ A tiny, entirely shader-driven game. You are a hue. **Don't touch your complemen
 No engine, no assets, no build step: WebGL2 (automatic WebGL1 fallback; force it with `?gl=1`) + one fullscreen triangle + a few KB of JS.
 Runs in any modern browser (target: Xbox/PS5 browsers) and, later, as a small Windows exe.
 
+> **No GPU?** [`retro/`](retro/) is the same game on a CPU-only, 256-colour, 320x200 engine (one ~43 KB page, no WebGL). It is the version for the Xbox browser.
+
 ## Run
 
 Open `index.html` in a browser (works from `file://`), or serve the folder:
