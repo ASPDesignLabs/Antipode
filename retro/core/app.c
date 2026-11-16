@@ -90,8 +90,9 @@ static int g_toggle;
 static float fade_k(void);
 static void read_switch(const Input *in, double dt, int *cycle, int *act) {
     *cycle = 0; *act = 0;
-    for (int k = 0; k < KEY_COUNT; k++) if (in->hit[k] && k != KEY_LEFT && k != KEY_RIGHT && k != KEY_Q && k != KEY_E && k != KEY_T) *act = 1;
-    for (int b = 0; b < PAD_COUNT; b++) if (in->pad_hit[b] && b != PAD_LEFT && b != PAD_RIGHT && b != PAD_LB && b != PAD_RB && b != PAD_Y) *act = 1;
+    int vert = SCENES[A.cur]->vert && g_theme.on;                          /* a title that chooses with up and down */
+    for (int k = 0; k < KEY_COUNT; k++) if (in->hit[k] && k != KEY_LEFT && k != KEY_RIGHT && k != KEY_Q && k != KEY_E && k != KEY_T && !(vert && (k == KEY_UP || k == KEY_DOWN || k == KEY_W || k == KEY_S))) *act = 1;
+    for (int b = 0; b < PAD_COUNT; b++) if (in->pad_hit[b] && b != PAD_LEFT && b != PAD_RIGHT && b != PAD_LB && b != PAD_RB && b != PAD_Y && !(vert && (b == PAD_UP || b == PAD_DOWN))) *act = 1;
     if (g_theme.on && (in->hit[KEY_T] || in->pad_hit[PAD_Y])) g_toggle = 1;
     if (in->hit[KEY_LEFT] || in->hit[KEY_Q] || in->pad_hit[PAD_LEFT] || in->pad_hit[PAD_LB]) *cycle = -1;
     if (in->hit[KEY_RIGHT] || in->hit[KEY_E] || in->pad_hit[PAD_RIGHT] || in->pad_hit[PAD_RB]) *cycle = 1;
@@ -112,6 +113,7 @@ static void read_switch(const Input *in, double dt, int *cycle, int *act) {
             float x = in->ptr_x, dx = in->ptr_x - A.P.x0, dy = in->ptr_y - A.P.y0;
             if (dx * dx + dy * dy < 14.0f * 14.0f) {                               /* a tap: at the sides it switches, else it goes */
                 if (g_theme.on && x > SCENES[A.cur]->w - 104 && in->ptr_y > SCENES[A.cur]->h - 16) g_toggle = 1;   /* the bottom corner: the other pair of colours */
+                else if (SCENES[A.cur]->tap && SCENES[A.cur]->tap(x, in->ptr_y)) { }           /* a button on the title took it */
                 else if (x < ZONE) *cycle = -1; else if (x > SCENES[A.cur]->w - ZONE) *cycle = 1; else *act = 1;
             }
         }
@@ -252,6 +254,11 @@ void app_present_rgb(uint8_t *rgb, int *w, int *h) {
 
 /* best scores: a little-endian u16 a scene */
 int best_get(void) { return A.cur < 8 ? SLOT.data[A.cur * 2] | (SLOT.data[A.cur * 2 + 1] << 8) : 0; }
+int pref_get(int i) { return i >= 0 && i < 7 ? SLOT.data[9 + i] : 0; }
+void pref_set(int i, int v) {
+    if (i < 0 || i >= 7) return;
+    SLOT.data[9 + i] = (uint8_t)v; SLOT.len = 16; SLOT.dirty = 1;
+}
 void best_set(int v) {
     if (A.cur >= 8) return;
     SLOT.data[A.cur * 2] = (uint8_t)(v & 255); SLOT.data[A.cur * 2 + 1] = (uint8_t)((v >> 8) & 255);

@@ -47,7 +47,7 @@ rules need to know about colour:
 - **Bright, major-key carols everywhere**, our own arrangements of public-domain tunes: bells over a triangle bass, sleigh-bell shakes, a
   ping-pong delay, a key change each time round. Silent Night waits on a title or game-over screen. Sparkler plays Jingle Bells,
   quickening with your score; Caroling Run plays Deck the Halls at the pace of the flight; Sleigh Bells plays Joy to the World's falling
-  scale with an answer of ours; Lantern plays We Wish You a Merry Christmas and each merge lifts it a semitone.
+  scale with an answer of ours; Lantern plays We Wish You a Merry Christmas and each merge lifts it a semitone; as the night is climbed it gains a shaker, a shimmer, drums and brass, a higher key and a quicker pace, and its last step is Jingle Bells.
 - **Danger is also a shape or a pattern, never only a colour** (red and green are the hardest pair for many colour-blind players): ripe
   trail, deadly water and the naughty list's blobs are striped like candy canes; in Caroling Run what kills is an empty space.
 
@@ -77,8 +77,16 @@ is one palette per frame: two scenes cannot be mixed pixel by pixel.) Mid-run, l
   game: a blob that grows into a **snowman** (face, carrot nose and, when big, a hat) is **finished** at full size: +5, a fanfare, and it
   waddles off leaving a **present**. A present gives a six-second effect: **hot cocoa** (you are quicker, your light brighter), a **candy
   cane** (the naughty list freezes) or a **magnet** (the blobs draw together, so they merge). Merges in quick succession build a **combo**
-  (1, 2, 3 up to 5 a merge); after 15 seconds small, quick **icicles** are sent as well; and with every five snowmen the naughty list
-  grows (faster spawns).
+  (1, 2, 3 up to 5 a merge).
+
+  **The night is climbed in steps, by score**: Little Nibbles, Stocking Stuffers, Naughty List, Christmas Eve and Midnight (Nice List at 0,
+  15, 40, 80 and 150; Naughty List at 0, 9, 24, 48 and 90). Each asks more: they come sooner and quicker, small quick **icicles** from the
+  second step, heavy slow lumps of **coal** from the third (coal cannot become a snowman; it melts into the snow it touches for +2).
+  Christmas Eve brings the **Grand Snowman** (size 30, never merges, sheds snowballs): each finished snowman pelts it, the third melts it
+  (+25 and three presents), and only then can Midnight come. Every step up leaves a present near you, cocoa lasts longer and lights further
+  the higher you are, and a **last bell** (two on the Nice List, one on the Naughty) saves you from being caught: the list freezes and is
+  pushed back. The title asks which list you play (up/down, stick or a tap on the bar; it is kept): **Nice List**, the gentler way, or
+  **Naughty List**, which asks sooner and harder, sends presents less often and scores half as much again. The music grows with the steps.
 
 ### How Afterimage works here
 
@@ -137,7 +145,7 @@ gamepad (left stick / d-pad). Any key, click, tap in the middle, or button start
   a frame natively. Sanitizers (AddressSanitizer and UBSan), every scene in both modes, the audio path, the unit tests: clean.
 - **`make test-game`** tests the rules one at a time. Lantern: a snowman is finished at full size (+5, a present, gone); a present gives its
   effect; a candy cane freezes the blobs; a magnet draws them together (the gap shrinks to under 60% of what it is without); cocoa makes you
-  at least 25% quicker; merges in a row make a combo (1 then 2); a third of what is sent is quick after 15 s and none at first; none of it
+  at least 25% quicker; merges in a row make a combo (1 then 2); the steps come at their scores on each list and Midnight waits for the boss; the boss comes at Christmas Eve, does not merge, is pelted by finished snowmen and melts at the third (+25, three presents); coal appears only from the third step, melts into snow (the stated size and +2) and never becomes a snowman; coal is slower; last bells are two and one and save you once each; the Naughty List scores x1.5 and sends them sooner and faster; cocoa lasts longer higher up; the carol gains a layer at each step; the title's choice by key and by tap, and that it is kept; none of it
   applies in the plain game. Caroling Run: over 1,500 generated rings every way through is two solid cells and neighbouring rings share a
   solid cell, the verses alternate your colour, a hollow cell is always the other colour, the first rings are safe, only a hollow cell
   kills, and the snow falls 93 px a second at the start and 295 at full speed.
@@ -160,5 +168,5 @@ gamepad (left stick / d-pad). Any key, click, tap in the middle, or button start
   - **The carols and the crash by ear.** The tunes are written from memory as our own arrangements; only Deck the Halls was checked against a
     transcription I could find. Silent Night's rhythm is simplified. The tests prove the synth plays the score, not that the score is right.
   - A colour-blind player or a simulator; an Xbox; a real controller or touch; sound over a speaker.
-  - Balance in season, above all Lantern's new rules (the strengths and timings were set by unit tests and a bot that ignores presents, not by
-    hand).
+  - Balance in season, above all Lantern's steps, boss, coal and last bells (the strengths and timings were set by unit tests and a bot that
+    ignores presents; nobody has beaten the boss, by bot or by hand).

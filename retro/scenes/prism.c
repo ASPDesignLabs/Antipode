@@ -426,7 +426,7 @@ static void render(Frame *f) {
 }
 
 static int idle(void) { return S.state == ST_MENU || (S.state == ST_DEAD && S.dead_t > 0.6); }
-const Scene scene_prism = { "PRISM RUN", W, H, enter, update, render, idle };
+const Scene scene_prism = { "PRISM RUN", W, H, enter, update, render, idle, 0, 0 };
 
 /* for the test harness only: a bot's steering, to find out whether the rings can always be flown */
 float prism_debug(int *score, int *state) {

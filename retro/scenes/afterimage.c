@@ -345,7 +345,7 @@ static void render(Frame *f) {
 }
 
 static int idle(void) { return S.state == ST_MENU || (S.state == ST_DEAD && S.dead_t > 0.6); }
-const Scene scene_afterimage = { "AFTERIMAGE", W, H, enter, update, render, idle };
+const Scene scene_afterimage = { "AFTERIMAGE", W, H, enter, update, render, idle, 0, 0 };
 
 /* for the test harness only: where things are, so a scripted bot can play */
 void afterimage_debug(int *score, int *state, float *pick_x, float *pick_y, float *x, float *y) {

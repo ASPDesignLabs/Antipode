@@ -59,6 +59,8 @@ typedef struct Scene {
     void (*update)(double dt, const Input *in);
     void (*render)(Frame *f);       /* draw the current state */
     int  (*idle)(void);             /* on its title screen: safe to switch away (and the app draws < > for touch) */
+    int  (*tap)(float x, float y);  /* a tap on an idle screen: return 1 if the scene took it (a button), else it is "go" or a scene switch */
+    int  vert;                      /* in season the scene's title uses up and down to choose: they are not "go" */
 } Scene;
 
 /* The season. With `on`, every hue goes through a painter's wheel (so red's opposite is green, gold's is blue) and the
@@ -70,6 +72,10 @@ float theme_wheel(float h);                 /* a position on the ring (0..1) -> 
 float theme_base_hue(uint32_t *rng);        /* the colour you start a run as: one of the pair's two, or any, when off */
 const char *theme_pair_name(int pair);      /* "RED/GREEN", "GOLD/BLUE" */
 #define GOLD_RING 0.23f                    /* a ring position that is drawn gold */
+
+/* A few more saved bytes a scene may keep for itself (a chosen difficulty): 0..6, each 0..255. */
+int  pref_get(int i);
+void pref_set(int i, int v);
 
 /* Best scores, one per scene (the current one's), 0..65535. The app keeps the bytes, the platform stores them. */
 int  best_get(void);

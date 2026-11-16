@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #define SND_RATE 44100
-enum { SFX_START, SFX_PICKUP, SFX_DIE, SFX_CRASH };   /* SFX_CRASH, in season: the carol breaks off, a sad trombone, then cymbals and a kick drum */
+enum { SFX_START, SFX_PICKUP, SFX_DIE, SFX_CRASH, SFX_TIER };   /* SFX_TIER, in season: a rising bell arpeggio and a cymbal swell, for a step up */   /* SFX_CRASH, in season: the carol breaks off, a sad trombone, then cymbals and a kick drum */
 enum { MU_NONE, MU_SILENT, MU_JINGLE, MU_DECK, MU_JOY, MU_WISH };
 
 void snd_init(void);
@@ -22,4 +22,8 @@ void snd_music_stop(void);
 int  snd_music_id(void);
 void snd_music_tempo(float mul);               /* 1 as written */
 void snd_music_bump(int semitones);            /* up this far until the next play: a game can raise the key as things go */
+/* Layers a game can add as things build, on top of the tune and its bass: sleigh bells, a shimmer an octave up, drums, and brass. */
+enum { ML_SHAKER = 1, ML_SHIMMER = 2, ML_DRUMS = 4, ML_BRASS = 8, ML_ALL = 15 };
+void snd_music_layers(int mask);               /* until the next play */
+int  snd_music_layers_get(void);
 #endif
