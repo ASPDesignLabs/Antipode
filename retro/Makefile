@@ -5,13 +5,13 @@
 CC      ?= cc
 CFLAGS  ?= -O2 -std=gnu11 -Wall -Wextra -Wno-unused-parameter -fno-math-errno
 INC      = -Icore
-SRC      = core/app.c core/gfx.c core/snd.c core/font_vga.c scenes/afterimage.c scenes/prism.c scenes/tidepool.c
+SRC      = core/app.c core/gfx.c core/snd.c core/font_vga.c scenes/afterimage.c scenes/prism.c scenes/tidepool.c scenes/moth.c
 
 all: host
 
 build/host: $(SRC) platform/host.c core/*.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) $(INC) -o $@ $(SRC) platform/host.c -lz
+	$(CC) $(CFLAGS) $(INC) -o $@ $(SRC) platform/host.c -lz -lm
 
 host: build/host
 
@@ -42,6 +42,8 @@ smoke: build/host
 	HOST_INPUT="0.5:+SPACE;0.6:-SPACE;1:+RIGHT;1.6:-RIGHT;1.6:+DOWN;2.2:-DOWN;2.2:+LEFT;3:-LEFT" ./build/host shot 2,4,6 build/smoke/play 3
 	./build/host bot 60
 	HOST_SCENE=1 ./build/host bot 60
+	HOST_SCENE=2 ./build/host bot 60
+	HOST_SCENE=3 ./build/host bot 60
 	./build/host bench 20
 
 clean:
