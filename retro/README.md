@@ -19,7 +19,7 @@ make web      # build/web/index.html: the whole game as ONE file, ~43 KB
 
 `make web` needs only `clang` with the wasm32 target and `wasm-ld` (no Emscripten, no libc, no libm: `core.h` carries its
 own `m_sin`/`m_atan2`, so every build computes the same numbers). The page embeds the module and runs from `file://`.
-Add `?perf` to the address for step and draw times on screen.
+The built page is committed as `play/index.html` so GitHub Pages can serve it; rebuild it with `make web && cp build/web/index.html play/` after changing anything. Add `?perf` to the address for step and draw times on screen.
 
 ```bash
 HOST_INPUT="0.5:+SPACE;1:+RIGHT;1.6:-RIGHT" ./build/host shot 2,4 build/smoke/play 3
