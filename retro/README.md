@@ -27,7 +27,35 @@ HOST_INPUT="0.5:+SPACE;1:+RIGHT;1.6:-RIGHT" ./build/host shot 2,4 build/smoke/pl
 ./build/host bench 20        # ms per frame
 ```
 
+## The season
+
+It is Christmas by default (`?theme=classic` is the plain game). A theme layer in the core does it, and no scene's rules know about it:
+
+- **A painter's wheel.** The engine's "opposite" is hue + 180° on a ring. In season every hue goes through one table (`theme_wheel` in
+  `gfx_hsv`) that lays the ring out as red, orange, yellow, green, blue, violet, so the opposite of red is green and of gold is
+  blue. You play **red/green** (the default) or **gold/blue**: `T`, the pad's Y, or a tap on the corner of a title screen
+  switches, and the choice is kept (`?pair=red` or `?pair=gold` forces one). Each run you are one of the pair's two colours.
+- **Sparkler** (Afterimage): the trail is a wire of fairy lights, a bulb every few pixels, that ripens red-orange-yellow-green; the
+  border is a candy cane; sparks are baubles; the head is a sparkler; death throws shards.
+- **Advent Run** (Prism Run): gold ribbon on the ring edges, gingham paper, a star for a ship; a ring is a day (`DAY 12`), with a
+  banner at the twenty-fourth (Christmas Eve) and the twenty-fifth.
+- **Sleigh Bells** (Tidepool): the pool's sources are bells that swing before they ring; you are a sleigh; pearls are snowflakes.
+- **Lantern** (Moth): you are a lantern; the dark is frost, paler; a blob that has grown gets a snowman's face (coal eyes, a carrot
+  nose toward you, a smile, buttons, and a hat on the big ones).
+- **Danger is also a pattern.** Red and green are the hardest pair for many colour-blind players, and the rule of the game is a colour.
+  Whatever kills is therefore striped like a candy cane as well as hot (ripe trail, deadly cells, water standing up, the frost's body),
+  and the two colours also differ in brightness.
+- **Snow** falls on the title and game-over screens and through a scene change, never in play (a flake must not hide what kills you).
+- **Carols**, our own arrangements of public-domain tunes: bells over a triangle bass, sleigh-bell shakes, a ping-pong delay, a key
+  change each time round (Silent Night a minor third up, Jingle Bells and Deck the Halls climbing). Silent Night waits on a title or
+  game-over screen; Sparkler plays Jingle Bells in the minor (the third, sixth and seventh lowered), quickening with your score;
+  Advent Run plays Deck the Halls at the pace of the flight; Sleigh Bells plays Joy to the World's falling scale with an answer
+  of ours; Lantern plays We Wish You a Merry Christmas in the minor and each merge lifts it a semitone. Sound effects are bells,
+  a shake, and a cracked bauble.
+
 ## The games
+
+Names below are the plain ones; in season they are Sparkler, Advent Run, Sleigh Bells and Lantern (`?mode=` takes either).
 
 Left and right (arrow keys, a tap or click at either side, a swipe, the stick or d-pad, Q and E, the bumpers) switch between
 them on a title or game-over screen; the screen fades out to black and the next one fades in. (Through black because there
@@ -94,22 +122,28 @@ gamepad (left stick / d-pad). Any key, click, tap in the middle, or button start
 
 ## What has been tested
 
-- **Native harness:** builds without warnings. Afterimage's bot gives the same runs as before the other scenes existed (same
-  seed: best 7, 5 deaths in 60 s). Prism Run's bot, which follows its own colour, scored 385 rings with 4 deaths in 300 s at the
-  new, slower start (1.5 rings a second, measured: 6 rings at 5 s, 15 at 10 s, 68 at 30 s, the old top speed by ring 150). Tidepool's
-  bot, which heads for pearls and slows in rising water, collects up to 8 a life with about one death in 20 s; with no input you
-  are safe (it is a pool, not a clock: there is nothing to do but collect). About 0.05 ms (Afterimage), 0.2 ms (Prism Run) and 0.25 ms
-  (Tidepool) a frame natively; Moth about 0.13 ms.
-- **Sanitizers:** every scene, 90 s of its bot, and scripted switching through all four with taps and the wrap, under AddressSanitizer
-  and UBSan: clean.
-- **Moth, native:** the bot (which keeps clear of the dark, more of the big blobs, and the walls) scores up to 8 merges and lasts
-  about 16 s a life, 18 deaths in 300 s; with no input you die in about 7 s. About 0.13 ms a frame.
-- **Chromium, headless:** the web build runs; keyboard, mouse (hover, click, drag) and a simulated gamepad drive it. Every way of
-  switching scenes works, through all four and round the ends; `?mode=` picks one. No errors; about 0.04 ms to step and 0.32 ms
-  to draw Moth.
-- **Found by testing, and fixed:** Prism Run's first rings could be unflyable (a one-cell way that shifted sideways between rings;
-  lethal hues next to the opposite that flipped as your colour drifted). Tidepool's own wake killed the boat on its own when it
-  moved slowly (the wake was added every step and piled up), and its first waves were too faint to ever be lethal.
-- **Not tested:** an Xbox, a real controller, real touch, or whether the sound is audible. Feel and balance are first guesses;
-  Tidepool's strengths (pulse, wake, the lethal height) and Moth's (the blobs' speed, the spawn rate, the merge size) were set by
-  measurement and a simple bot, not by a person's hand; a person who lures the blobs together should do better than the bot.
+- **Plain mode is exact.** With the season off (`HOST_THEME=classic`) every bot gives the same numbers as before the season existed
+  (Afterimage best 7, 5 deaths in 60 s; Prism Run 316 and 1 in 120 s, 385 and 4 in 300 s; Tidepool 8 and 6; Moth 8 and 5). The
+  season uses the same random stream (it always draws the colour, then maps it), so a seed means the same game in either.
+- **In season, both pairs:** each bot plays all four scenes for 150 s (Prism Run 362 and 206 rings; the others as before); 0.2 to 0.3 ms
+  a frame natively. Sanitizers (AddressSanitizer and UBSan), every scene in both modes, the audio path, switching and the three ways
+  of toggling the pair: clean.
+- **The carols render as written:** `make test-audio` renders each tune alone and checks every note against its intended pitch,
+  across loops (so the key changes and the minor mode too): 542 notes, none more than 40 cents off. No clipping, no silence; a soft
+  limiter rounds the loud moments.
+- **Chromium, headless:** season on by default; both pairs and `?pair=`; the choice kept across a reload; `?theme=classic`; the season's
+  `?mode=` names; a tap on the corner, a side tap and a key all do what they should; no errors.
+- **Found by testing, and fixed:**
+  - The page's list of key names was missing Q and E (an earlier patch silently did nothing), so any key outside the list was sent as
+    the wrong key and, on a title screen, switched scene instead of starting. The page now refuses to run if its list and the game's
+    differ in length, and the build asserts it.
+  - The page saved only the first scene's best score; the other scenes' bests (and now the pair) were lost on reload. It saves all 16
+    bytes and migrates an old save.
+  - Afterimage's game-over screen was not a place to switch scenes or hear the title carol; it is now, like the others.
+- **Not tested, and what needs a person:**
+  - **The carols by ear.** The tunes are written from memory as our own arrangements; only Deck the Halls was checked against a
+    transcription I could find (its first eight bars, the Welsh Nos Galan tune). Silent Night's rhythm in particular is simplified. The
+    test proves the synth plays the score, not that the score is right: please listen.
+  - A colour-blind player or a simulator on the red/green pair; an Xbox; a real controller or touch; sound over a speaker.
+  - Balance in season: the scenes' rules are unchanged, but the sprites and stripes make a few things (a thin fairy-light wire, a
+    bauble) read differently from the plain game's.

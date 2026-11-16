@@ -15,8 +15,10 @@ static uint8_t g_slot[16];
 static AppConfig g_cfg;
 static int g_started;
 
-static const char KEYNAMES[] = "UP DOWN LEFT RIGHT W A S D SPACE ENTER ESC M ANY";
+static const char KEYNAMES[] = "UP DOWN LEFT RIGHT W A S D SPACE ENTER ESC M Q E T ANY";
+_Static_assert(KEY_COUNT == 16, "the page reads these names by position: keep KEYNAMES in core.h's enum order");
 EXPORT("web_key_names") const char *web_key_names(void) { return KEYNAMES; }
+EXPORT("web_key_count") int web_key_count(void) { return KEY_COUNT; }
 EXPORT("web_pad_count") int web_pad_count(void) { return PAD_COUNT; }
 
 /* before web_start */
@@ -41,6 +43,23 @@ EXPORT("web_scene_names") const char *web_scene_names(void) {
     }
     return buf;
 }
+/* the season's names for the scenes, newline-separated, to match ?mode= against too */
+EXPORT("web_scene_titles") const char *web_scene_titles(void) {
+    static char buf[160];
+    buf[0] = 0;
+    for (int i = 0; i < SCENE_COUNT; i++) {
+        const char *n = app_scene_title(i);
+        size_t len = strlen(buf);
+        if (i) buf[len++] = '\n';
+        while (*n) buf[len++] = *n++;
+        buf[len] = 0;
+    }
+    return buf;
+}
+/* before web_start: the season on or off, and the pair (0 red/green, 1 gold/blue, -1 as last chosen) */
+EXPORT("web_theme") void web_theme(int on, int pair) { app_set_theme(on, pair); }
+EXPORT("web_pair") int web_pair(void) { return g_theme.pair; }                 /* for tests */
+EXPORT("web_season") int web_season(void) { return g_theme.on; }
 static int g_first_scene;
 EXPORT("web_select") void web_select(int i) { g_first_scene = i; }              /* before web_start */
 EXPORT("web_scene") int web_scene(void) { return app_scene(); }

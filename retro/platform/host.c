@@ -3,6 +3,8 @@
  *   host shot  <t1,t2,...> prefix [scale]   PNG frames at those times (seconds), default scale 3
  *   host bench <seconds>                    ms per frame, update + present, every frame drawn
  *   host bot   <seconds>                    a scripted player that steers at the spark; prints how it did
+ *   host wav   <seconds> out.wav            the sound, as the app makes it (HOST_SCENE and HOST_INPUT apply)
+ * HOST_THEME=classic runs the engine as it was before the season; HOST_PAIR=1 plays gold and blue.
  *
  * HOST_INPUT plays a person: "1:+SPACE;2:+LEFT;2.5:-LEFT;3:p160,100;4:pu" (+/- keys, pX,Y the pointer on at a place,
  * pd the pointer pressed, pr released, pu the pointer gone, a stick as aLX0.8, a button +PAD_A). HOST_SCENE=1 starts in Prism Run, 2 in Tidepool, 3 in Moth.
@@ -14,6 +16,7 @@
 #include <zlib.h>
 #include "core.h"
 #include "app.h"
+#include "snd.h"
 
 void afterimage_debug(int *score, int *state, float *pick_x, float *pick_y, float *x, float *y);
 float prism_debug(int *score, int *state);
@@ -53,7 +56,7 @@ static void write_png(const char *path, const uint8_t *rgb, int w, int h, int sc
 static Input g_in;
 static struct { double t; int key, down, pad, axis, ptr; float v, x, y; } g_ev[4096];
 static int g_nev, g_iev;
-static const char *const KEYNAME[KEY_COUNT] = { "UP", "DOWN", "LEFT", "RIGHT", "W", "A", "S", "D", "SPACE", "ENTER", "ESC", "M", "Q", "E", "ANY" };
+static const char *const KEYNAME[KEY_COUNT] = { "UP", "DOWN", "LEFT", "RIGHT", "W", "A", "S", "D", "SPACE", "ENTER", "ESC", "M", "Q", "E", "T", "ANY" };
 static const char *const PADNAME[PAD_COUNT] = { "PAD_A", "PAD_B", "PAD_X", "PAD_Y", "PAD_LB", "PAD_RB", "PAD_VIEW", "PAD_MENU",
     "PAD_LS", "PAD_RS", "PAD_UP", "PAD_DOWN", "PAD_LEFT", "PAD_RIGHT", "PAD_LT", "PAD_RT" };
 static void input_parse(const char *s) {
@@ -112,6 +115,8 @@ int main(int argc, char **argv) {
     app_default_config(&cfg);
     cfg.start_fade = 0;
     app_set_input(&g_in);
+    const char *th = getenv("HOST_THEME");                      /* HOST_THEME=classic is the engine as it was; HOST_PAIR=1 gold and blue */
+    app_set_theme(th ? strcmp(th, "classic") != 0 : 1, getenv("HOST_PAIR") ? atoi(getenv("HOST_PAIR")) : -1);
     app_init(&cfg);
     if (getenv("HOST_SCENE")) app_select(atoi(getenv("HOST_SCENE")));
     const char *env = getenv("HOST_INPUT");
@@ -177,6 +182,25 @@ int main(int argc, char **argv) {
             app_update(dt);
         }
         printf("bot (%s): best %d, %d deaths in %.0fs\n", app_scene_name(app_scene()), best, deaths, atof(argv[2]));
-    } else { fprintf(stderr, "usage: host shot|bench|bot ...\n"); return 1; }
+    } else if (!strcmp(argv[1], "wav") && argc >= 4) {            /* the sound as it would be heard: the app runs, its audio is kept */
+        int n = (int)(atof(argv[2]) * 60), spf = SND_RATE / 60;
+        int16_t *pcm = malloc((size_t)n * spf * 4);
+        for (int i = 0; i < n; i++) {
+            input_step(i * dt);
+            app_update(dt);
+            snd_render(pcm + (size_t)i * spf * 2, spf);
+        }
+        FILE *f = fopen(argv[3], "wb");
+        uint32_t dlen = (uint32_t)n * spf * 4, rate = SND_RATE, v;
+        fwrite("RIFF", 1, 4, f); v = 36 + dlen; fwrite(&v, 4, 1, f);
+        fwrite("WAVEfmt ", 1, 8, f); v = 16; fwrite(&v, 4, 1, f);
+        uint16_t sh = 1; fwrite(&sh, 2, 1, f); sh = 2; fwrite(&sh, 2, 1, f);
+        fwrite(&rate, 4, 1, f); v = rate * 4; fwrite(&v, 4, 1, f);
+        sh = 4; fwrite(&sh, 2, 1, f); sh = 16; fwrite(&sh, 2, 1, f);
+        fwrite("data", 1, 4, f); fwrite(&dlen, 4, 1, f);
+        fwrite(pcm, 4, (size_t)n * spf, f);
+        fclose(f); free(pcm);
+        printf("%s\n", argv[3]);
+    } else { fprintf(stderr, "usage: host shot|bench|bot|wav ...\n"); return 1; }
     return 0;
 }

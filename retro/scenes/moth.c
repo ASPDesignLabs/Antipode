@@ -30,7 +30,7 @@
 #define MAXB 12
 #define RMAX 32.0f                  /* a blob this big no longer merges: it is as big as the dark gets */
 
-enum { I_CORE = 1, I_WING = 2, I_YOU = 3, I_NOT = 4, I_RING = 5, I_PLATE = 6, I_TEXT = 15 };
+enum { I_CORE = 1, I_WING = 2, I_YOU = 3, I_NOT = 4, I_RING = 5, I_PLATE = 6, I_GOLD = 7, I_NOSE = 8, I_COAL = 9, I_TEXT = 15 };
 enum { ST_MENU, ST_PLAY, ST_DEAD };
 
 typedef struct { float x, y, vx, vy, r; } Blob;
@@ -81,16 +81,16 @@ static void splat(const Blob *b) {
         }
     }
 }
-static void splat_light(float fx, float fy) {
+static void splat_light(float fx, float fy, int R) {
     int cx = (int)(fx + 0.5f), cy = (int)(fy + 0.5f);
-    uint32_t inv = (uint32_t)((256.0f * 65536.0f) / (float)(LIGHT_R * LIGHT_R));
-    int y0 = cy - LIGHT_R < 0 ? 0 : cy - LIGHT_R, y1 = cy + LIGHT_R >= H ? H - 1 : cy + LIGHT_R;
-    int x0 = cx - LIGHT_R < 0 ? 0 : cx - LIGHT_R, x1 = cx + LIGHT_R >= W ? W - 1 : cx + LIGHT_R;
+    uint32_t inv = (uint32_t)((256.0f * 65536.0f) / (float)(R * R));
+    int y0 = cy - R < 0 ? 0 : cy - R, y1 = cy + R >= H ? H - 1 : cy + R;
+    int x0 = cx - R < 0 ? 0 : cx - R, x1 = cx + R >= W ? W - 1 : cx + R;
     for (int y = y0; y <= y1; y++) {
         int dy = y - cy;
         for (int x = x0; x <= x1; x++) {
             int dx = x - cx, d2 = dx * dx + dy * dy;
-            if (d2 >= LIGHT_R * LIGHT_R) continue;
+            if (d2 >= R * R) continue;
             lum[y * W + x] = ltab[(uint32_t)((uint32_t)d2 * inv) >> 16];
         }
     }
@@ -99,7 +99,7 @@ static void build_field(void) {
     memset(acc, 0, sizeof acc);
     memset(lum, 0, sizeof lum);
     for (int i = 0; i < S.nb; i++) splat(&S.b[i]);
-    splat_light(S.x, S.y);
+    splat_light(S.x, S.y, LIGHT_R + (g_theme.on ? (int)(2.0f * m_sin((float)S.clock * 11.0f) + 1.5f * m_sin((float)S.clock * 23.0f)) : 0));   /* a lantern's flame is never still */
 }
 static int field_at(float x, float y) { int ix = clampi((int)(x + 0.5f), 0, W - 1), iy = clampi((int)(y + 0.5f), 0, H - 1); return acc[iy * W + ix]; }
 
@@ -125,19 +125,19 @@ static void spawn_blob(void) {
 }
 
 static void reset_run(void) {
-    S.hue = rf();
+    S.hue = theme_base_hue(&S.rng);
     S.score = 0; S.nb = 0; S.life = 0.0; S.spawn_t = 2.0;
     S.x = W * 0.5f; S.y = H * 0.5f; S.vx = S.vy = 0.0f;
     spawn_blob(); spawn_blob();
 }
-static void begin(void) { reset_run(); S.state = ST_PLAY; snd_sfx(SFX_START); }
+static void begin(void) { reset_run(); S.state = ST_PLAY; snd_sfx(SFX_START); snd_music_play(MU_WISH); }
 
 static void enter(uint32_t seed) {
     build_tables();
     S.rng = seed ? seed : 1u;
     S.state = ST_MENU; S.clock = 0.0; S.dead_t = 0.0;
     S.best = best_get();
-    S.hue = rf();
+    S.hue = theme_base_hue(&S.rng);
     S.nb = 0; S.x = W * 0.5f; S.y = H * 0.5f; S.vx = S.vy = 0.0f; S.life = 0.0;
     for (int i = 0; i < 4; i++) {                               /* behind the title: a few drifting, unhurried */
         Blob *b = &S.b[S.nb++];
@@ -149,6 +149,7 @@ static void enter(uint32_t seed) {
 static void die(void) {
     S.state = ST_DEAD; S.dead_t = 0.0;
     snd_sfx(SFX_DIE);
+    snd_music_stop();
     if (S.score > S.best) { S.best = S.score; best_set(S.best); }
 }
 
@@ -192,7 +193,7 @@ static void merge_blobs(void) {                                 /* touching blob
             a->vx = (a->vx * wa + b->vx * wb) / w; a->vy = (a->vy * wa + b->vy * wb) / w;
             a->r = m_sqrt(nr2);
             *b = S.b[--S.nb];
-            if (S.state == ST_PLAY) { S.score++; snd_sfx_note(SFX_PICKUP, S.score); }
+            if (S.state == ST_PLAY) { S.score++; snd_sfx_note(SFX_PICKUP, S.score); snd_music_bump(S.score > 7 ? 7 : S.score); }   /* each merge lifts the carol a semitone: it climbs as the dark thins */
             j = i;                                              /* look again from the start of this one */
         }
 }
@@ -232,6 +233,7 @@ static void update(double dt, const Input *in) {
         return;
     }
     S.life += dt;
+    snd_music_tempo(0.9f + 0.012f * (float)(S.life < 50.0 ? S.life : 50.0));
     float dx, dy, mag, tvx = 0.0f, tvy = 0.0f;
     if (steer(in, &dx, &dy, &mag)) { tvx = dx * mag * 72.0f; tvy = dy * mag * 72.0f; }
     float k = clampf((float)dt * 9.0f, 0.0f, 1.0f);
@@ -255,7 +257,7 @@ static void build_pal(Frame *f) {
     for (int a = 0; a < LA; a++)
         for (int b = 0; b < LB; b++) {
             float y = (float)a / (LA - 1), yv = y * y * 0.85f;
-            float an, s = 0.88f;
+            float an, s = g_theme.on ? 0.55f : 0.88f;                    /* in season the dark is frost: paler */
             if (b < 10) { float u = (float)b / 10.0f; an = u * u * 0.75f; }                  /* the aura, below the surface */
             else { an = 0.66f + (float)(b - 10) * 0.034f; }                                  /* the body */
             if (b == 10 || b == 11) { s = 0.35f; an = 1.0f; }                                  /* the rim, hot */
@@ -265,6 +267,9 @@ static void build_pal(Frame *f) {
             if (b >= 10) v = 0.30f + 0.65f * an * (b >= 12 ? 0.85f : 1.0f) + yv * 0.2f;
             gfx_pal_hsv(f, BASE + a * LB + b, hue, s, v > 1.0f ? 1.0f : v);
         }
+    gfx_pal_hsv(f, I_GOLD, GOLD_RING, 0.85f, 0.95f);
+    gfx_pal_hsv(f, I_NOSE, 0.10f, 0.95f, 1.0f);
+    gfx_pal_hsv(f, I_COAL, 0.0f, 0.0f, 0.07f);
     gfx_pal_hsv(f, I_CORE, h0, 0.18f, 1.0f);
     gfx_pal_hsv(f, I_WING, h0, 0.6f, 0.9f + 0.1f * m_sin(t * 40.0f));
     gfx_pal_hsv(f, I_YOU, h0, 0.85f, 1.0f);
@@ -274,15 +279,48 @@ static void build_pal(Frame *f) {
     gfx_pal_hsv(f, I_TEXT, h0, 0.18f, S.state == ST_PLAY ? 0.9f : 0.78f + 0.22f * m_sin(t * 2.5f));
 }
 
+/* in season: your light is a lantern (g: the frame, c: the glass, w: the flame) */
+static const char *const LANTERN[10] = {
+    "..ggg..", ".g...g.", "ggggggg", "gcccccg", "gccwccg", "gcwwwcg", "gccwccg", "gcccccg", "ggggggg", ".g...g." };
+
+/* a blob that has grown becomes a snowman: eyes of coal, a carrot nose toward you, a smile, buttons, and a hat on the big ones */
+static void draw_faces(Frame *f) {
+    for (int i = 0; i < S.nb; i++) {
+        const Blob *b = &S.b[i];
+        if (b->r < 13.0f) continue;
+        int bx = (int)(b->x + 0.5f), by = (int)(b->y + 0.5f), r = (int)b->r, big = r >= 18, ex = (int)(b->r * 0.32f), ey = (int)(b->r * 0.22f);
+        gfx_rect(f, bx - ex - (big ? 1 : 0), by - ey, big ? 2 : 1, big ? 2 : 1, I_COAL);
+        gfx_rect(f, bx + ex, by - ey, big ? 2 : 1, big ? 2 : 1, I_COAL);
+        float dx = S.x - b->x, dy = S.y - b->y, d = m_sqrt(dx * dx + dy * dy) + 0.001f;
+        int nl = 2 + (int)(b->r * 0.22f);
+        for (int k = 1; k <= nl; k++) gfx_px(f, bx + (int)(dx / d * (float)k), by + 1 + (int)(dy / d * (float)k), I_NOSE);
+        for (int k = -2; k <= 2; k++) gfx_px(f, bx + k * (big ? 2 : 1), by + (int)(b->r * 0.46f) - ((k == 2 || k == -2) ? 1 : 0), I_COAL);
+        if (big) { gfx_px(f, bx, by + (int)(b->r * 0.72f), I_COAL); gfx_px(f, bx, by + (int)(b->r * 0.88f), I_COAL); }
+        if (r >= 22) { gfx_rect(f, bx - r / 2 - 1, by - r + 1, r + 2, 2, I_COAL); gfx_rect(f, bx - r / 3, by - r - 5, r * 2 / 3, 6, I_COAL); }
+    }
+}
+
 static void plate(Frame *f, int x, int y, int w, int h) { gfx_rect(f, x, y, w, h, I_PLATE); }
 
 static void render(Frame *f) {
     build_pal(f);
     if (S.state != ST_PLAY) build_field();                      /* in play the update already did */
-    for (int i = 0; i < W * H; i++) f->pix[i] = (uint8_t)(BASE + lum[i] * LB + lbq[acc[i] > 1023 ? 1023 : acc[i]]);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            int i = y * W + x, lb = lbq[acc[i] > 1023 ? 1023 : acc[i]];
+            if (g_theme.on && lb >= 12 && (((x + y) >> 2) & 1)) lb = 11;      /* the body is striped, not only bright: a candy-cane dark */
+            f->pix[i] = (uint8_t)(BASE + lum[i] * LB + lb);
+        }
     char num[16], line[32];
     int hx = (int)(S.x + 0.5f), hy = (int)(S.y + 0.5f);
-    if (S.state != ST_DEAD || S.dead_t < 0.35) {                /* the moth: a point of light, wings a blur */
+    if (g_theme.on) {
+        draw_faces(f);
+        if (S.state != ST_DEAD || S.dead_t < 0.35) {
+            uint8_t lm[256]; memset(lm, 0, sizeof lm); lm['g'] = I_GOLD; lm['c'] = I_WING; lm['w'] = I_CORE;
+            gfx_blit(f, hx - 3, hy - 5, LANTERN, 10, lm);
+        }
+    }
+    if (!g_theme.on && (S.state != ST_DEAD || S.dead_t < 0.35)) {   /* the moth: a point of light, wings a blur */
         int fl = ((int)(S.clock * 24.0) & 1) * 2;
         gfx_px(f, hx - 3 - fl / 2, hy - 1, I_WING); gfx_px(f, hx + 3 + fl / 2, hy - 1, I_WING);
         gfx_px(f, hx - 2, hy + fl - 1, I_WING); gfx_px(f, hx + 2, hy + fl - 1, I_WING);
@@ -291,7 +329,7 @@ static void render(Frame *f) {
     if (S.state == ST_PLAY || S.state == ST_DEAD) {
         plate(f, 3, 3, 46, 30);
         gfx_rect(f, 6, 6, 10, 10, I_YOU); gfx_text8(f, 20, 7, "YOU", I_TEXT, 1);
-        gfx_rect(f, 6, 20, 10, 10, I_NOT); gfx_text8(f, 20, 21, "DARK", I_TEXT, 1);
+        gfx_rect(f, 6, 20, 10, 10, I_NOT); gfx_text8(f, 20, 21, g_theme.on ? "FROST" : "DARK", I_TEXT, 1);
     }
     if (S.state == ST_PLAY) {
         gfx_itoa(S.score, num);
@@ -302,7 +340,7 @@ static void render(Frame *f) {
         gfx_ring(f, hx, hy, r, I_RING); gfx_ring(f, hx, hy, r + 1, I_RING);
         plate(f, 60, 54, 200, 108);
         gfx_itoa(S.score, num);
-        gfx_text8_c(f, 62, "MERGES", I_TEXT, 1);
+        gfx_text8_c(f, 62, g_theme.on ? "SNOWBALLS ROLLED" : "MERGES", I_TEXT, 1);
         gfx_text16_c(f, 74, num, I_TEXT, 2);
         for (int i = 0; i < 5; i++) line[i] = "BEST "[i];
         gfx_itoa(S.best, line + 5);
@@ -310,10 +348,10 @@ static void render(Frame *f) {
         if (S.dead_t > 0.6) gfx_text8_c(f, 140, "PRESS TO RETRY", I_TEXT, 1);
     } else {
         plate(f, 24, 10, 272, 52); plate(f, 10, 112, 300, 72);
-        gfx_text16_c(f, 14, "MOTH", I_TEXT, 2);
-        gfx_text8_c(f, 50, "A LIGHT IN A DARK THAT ANSWERS", I_TEXT, 1);
-        gfx_text8_c(f, 118, "THE DARK CHASES YOU IN YOUR OPPOSITE", I_TEXT, 1);
-        gfx_text8_c(f, 130, "LURE IT TOGETHER: TOUCHING, IT MERGES", I_TEXT, 1);
+        gfx_text16_c(f, 14, g_theme.on ? "LANTERN" : "MOTH", I_TEXT, 2);
+        gfx_text8_c(f, 50, g_theme.on ? "A LANTERN IN THE WINTER DARK" : "A LIGHT IN A DARK THAT ANSWERS", I_TEXT, 1);
+        gfx_text8_c(f, 118, g_theme.on ? "THE FROST CHASES YOUR LANTERN" : "THE DARK CHASES YOU IN YOUR OPPOSITE", I_TEXT, 1);
+        gfx_text8_c(f, 130, g_theme.on ? "LURE ITS SNOWBALLS TOGETHER TO MERGE" : "LURE IT TOGETHER: TOUCHING, IT MERGES", I_TEXT, 1);
         gfx_text8_c(f, 148, "STEER: KEYS / STICK / MOUSE / TOUCH", I_TEXT, 1);
         gfx_text8_c(f, 162, "PRESS ANY KEY", I_TEXT, 1);
     }

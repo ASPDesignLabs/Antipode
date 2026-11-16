@@ -32,7 +32,7 @@ typedef struct Frame {
     uint8_t pal[256][3];            /* VGA DAC: 6 bits per channel, 0..63 */
 } Frame;
 
-enum { KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE, KEY_ENTER, KEY_ESC, KEY_M, KEY_Q, KEY_E, KEY_ANY, KEY_COUNT };
+enum { KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE, KEY_ENTER, KEY_ESC, KEY_M, KEY_Q, KEY_E, KEY_T, KEY_ANY, KEY_COUNT };
 /* A game controller, by XInput's layout. */
 enum { PAD_A, PAD_B, PAD_X, PAD_Y, PAD_LB, PAD_RB, PAD_VIEW, PAD_MENU, PAD_LS, PAD_RS,
        PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_LT, PAD_RT, PAD_COUNT };
@@ -60,6 +60,16 @@ typedef struct Scene {
     void (*render)(Frame *f);       /* draw the current state */
     int  (*idle)(void);             /* on its title screen: safe to switch away (and the app draws < > for touch) */
 } Scene;
+
+/* The season. With `on`, every hue goes through a painter's wheel (so red's opposite is green, gold's is blue) and the
+ * scenes dress themselves; `pair` picks which of the two opposed pairs you play: 0 red / green, 1 gold / blue. Nothing in a
+ * scene's rules depends on either: it is all palette, sprites, words and sound. With `on` clear, the engine is as it was. */
+typedef struct Theme { int on; int pair; } Theme;
+extern Theme g_theme;
+float theme_wheel(float h);                 /* a position on the ring (0..1) -> the hue it is drawn in */
+float theme_base_hue(uint32_t *rng);        /* the colour you start a run as: one of the pair's two, or any, when off */
+const char *theme_pair_name(int pair);      /* "RED/GREEN", "GOLD/BLUE" */
+#define GOLD_RING 0.23f                    /* a ring position that is drawn gold */
 
 /* Best scores, one per scene (the current one's), 0..65535. The app keeps the bytes, the platform stores them. */
 int  best_get(void);
