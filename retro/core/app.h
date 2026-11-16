@@ -16,7 +16,9 @@ void app_default_config(AppConfig *c);
 void app_init(const AppConfig *cfg);
 void app_select(int scene);                         /* straight to a scene (before the first frame) */
 int  app_scene(void);                               /* the current one */
-const char *app_scene_name(int scene);
+const char *app_scene_name(int scene);             /* the canonical name (also what ?mode= matches) */
+const char *app_scene_title(int scene);            /* the name it goes by in season */
+void app_set_theme(int on, int pair);              /* before app_init */
 void app_set_input(Input *in);
 void app_update(double dt);                         /* clears the input's edges after the step */
 int  app_mode(int *w, int *h);                      /* current video mode */

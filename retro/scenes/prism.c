@@ -31,14 +31,15 @@
 #define DP 0.30f                    /* hue steps your colour drifts a ring: a full turn in 80 rings */
 #define ROT_RATE 150.0f             /* roll, in angle units (256 a turn) a second */
 
-enum { I_VOID = 0, I_GAP = 1, I_PLAYER = 3, I_PHALO = 4, I_YOU = 5, I_NOT = 6, I_RING = 7, I_PLATE = 8, I_TEXT = 15 };
+enum { I_VOID = 0, I_GAP = 1, I_PLAYER = 3, I_PHALO = 4, I_YOU = 5, I_NOT = 6, I_RING = 7, I_PLATE = 8, I_GOLD = 9, I_TEXT = 15 };
 enum { ST_MENU, ST_PLAY, ST_DEAD };
 
 static struct {
     uint32_t rng;
     float p0;                       /* your hue (in steps of 1/24) at the start */
     int state, score, best, start, gen_next, lane;
-    double zf, clock, dead_t;
+    double zf, clock, dead_t, banner_t;
+    const char *banner;
     float rot, rotv;
     int pd;                         /* the depth under the ship */
 } S;
@@ -114,7 +115,7 @@ static int cell_hue(int i, int roti, int z) {
 
 /* ---- the game ---- */
 static void reset_run(void) {
-    S.p0 = rng_f(&S.rng) * HUES;
+    S.p0 = theme_base_hue(&S.rng) * HUES;
     S.zf = 0.0; S.rot = 0.0f; S.rotv = 0.0f;
     S.score = 0; S.start = 0; S.gen_next = 0; S.lane = SEGS / 2;
     gen_ahead();
@@ -123,7 +124,9 @@ static void reset_run(void) {
 static void begin(void) {
     reset_run();
     S.state = ST_PLAY;
+    S.banner_t = 0.0;
     snd_sfx(SFX_START);
+    snd_music_play(MU_DECK);
 }
 
 static void enter(uint32_t seed) {
@@ -150,6 +153,7 @@ static void die(void) {
 #endif
     S.state = ST_DEAD; S.dead_t = 0.0;
     snd_sfx(SFX_DIE);
+    snd_music_stop();
     if (S.score > S.best) { S.best = S.score; best_set(S.best); }
 }
 
@@ -190,6 +194,8 @@ static void update(double dt, const Input *in) {
     S.rot += S.rotv * (float)dt;
     S.rot -= 256.0f * m_floor(S.rot * (1.0f / 256.0f));
     gen_ahead();
+    if (S.banner_t > 0.0) S.banner_t -= dt;
+    snd_music_tempo(0.75f + speed * 0.17f);                  /* the carol keeps pace with the flight */
 
     int z = (int)S.zf, roti = (int)m_floor(S.rot) & 255;
     float p = p_at(S.zf + S.pd);
@@ -197,7 +203,8 @@ static void update(double dt, const Input *in) {
         if (lethal_hue(cell_hue(PY * W + PX + dx, roti, z), p)) { die(); return; }
     int sc = (int)(S.zf / RINGLEN) - S.start;
     if (sc > S.score) {
-        if (sc % 10 == 0) snd_sfx_note(SFX_PICKUP, sc / 10);
+        if (sc % (g_theme.on ? 6 : 10) == 0) snd_sfx_note(SFX_PICKUP, sc / (g_theme.on ? 6 : 10));
+        if (g_theme.on && (sc == 24 || sc == 25)) { S.banner = sc == 24 ? "CHRISTMAS EVE" : "CHRISTMAS DAY"; S.banner_t = 2.4; snd_sfx(SFX_START); }   /* the twenty-fourth door, then the twenty-fifth */
         S.score = sc;
     }
 }
@@ -219,6 +226,7 @@ static void build_pal(Frame *f) {
     float ph = p / HUES + flip;
     gfx_pal_hsv(f, I_VOID, ph, 0.5f, 0.0f);
     gfx_pal_hsv(f, I_GAP, ph, 0.5f, 0.04f);
+    gfx_pal_hsv(f, I_GOLD, GOLD_RING, 0.85f, 0.95f);          /* ribbon */
     gfx_pal_hsv(f, I_PLAYER, ph, 0.25f, 1.0f);
     gfx_pal_hsv(f, I_PHALO, ph, 0.85f, 0.55f);
     gfx_pal_hsv(f, I_YOU, ph, 0.85f, 1.0f);
@@ -228,22 +236,35 @@ static void build_pal(Frame *f) {
     gfx_pal_hsv(f, I_TEXT, ph, 0.18f, S.state == ST_PLAY ? 0.9f : 0.78f + 0.22f * m_sin(t * 2.5f));
 }
 
+static void strcpy_(char *d, const char *s) { while ((*d++ = *s++)) {} }
 static void plate(Frame *f, int x, int y, int w, int h) { gfx_rect(f, x, y, w, h, I_PLATE); }
 
 static void render(Frame *f) {
     build_pal(f);
-    int z = (int)S.zf, roti = (int)m_floor(S.rot) & 255;
-    for (int i = 0; i < W * H; i++) {
-        int fg = tun_f[i];
-        if (fg == 255) { f->pix[i] = I_VOID; continue; }
-        int a = (tun_a[i] + roti) & 255, wz = tun_d[i] + z, fr = wz & 255;
-        if (fr < tun_rg[i] || ((a & 15) < tun_ag[i] && fg > 2)) { f->pix[i] = (uint8_t)(fg > 1 ? I_GAP : I_VOID); continue; }
-        int lvl = fr < 40 ? fg + 1 : fg;                     /* a lit leading edge to each ring */
-        if (lvl > FOG - 1) lvl = FOG - 1;
-        f->pix[i] = (uint8_t)(BASE + pat[(wz >> 8) & (NRING - 1)][a >> 4] * FOG + lvl);
-    }
+    int z = (int)S.zf, roti = (int)m_floor(S.rot) & 255, xm = g_theme.on;
+    uint8_t lslot[HUES];                                    /* which hues are deadly now, so the deadly cells can be striped as well as hot */
+    float pcur = p_at(S.zf + S.pd);
+    for (int h = 0; h < HUES; h++) lslot[h] = (uint8_t)lethal_hue(h, pcur);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            int i = y * W + x, fg = tun_f[i];
+            if (fg == 255) { f->pix[i] = I_VOID; continue; }
+            int a = (tun_a[i] + roti) & 255, wz = tun_d[i] + z, fr = wz & 255;
+            if (fr < tun_rg[i] || ((a & 15) < tun_ag[i] && fg > 2)) { f->pix[i] = (uint8_t)(xm && fg > 5 ? I_GOLD : fg > 1 ? I_GAP : I_VOID); continue; }
+            int lvl = fr < 40 ? fg + 1 : fg;                 /* a lit leading edge to each ring */
+            int hue = pat[(wz >> 8) & (NRING - 1)][a >> 4];
+            if (xm) {
+                if (((wz >> 5) ^ (a >> 2)) & 1) lvl += 1;    /* wrapping paper: a gingham of lighter and darker squares */
+                if (lslot[hue] && (((x + y) >> 2) & 1)) lvl = lvl > 3 ? lvl - 4 : 0;   /* and what kills is striped like a candy cane */
+            }
+            if (lvl > FOG - 1) lvl = FOG - 1;
+            f->pix[i] = (uint8_t)(BASE + hue * FOG + lvl);
+        }
     char num[16], line[32];
-    if (S.state != ST_DEAD || S.dead_t < 0.35) { gfx_disc(f, PX, PY, 8, I_PHALO); gfx_disc(f, PX, PY, 4, I_PLAYER); }
+    if (S.state != ST_DEAD || S.dead_t < 0.35) {
+        gfx_disc(f, PX, PY, 8, I_PHALO); gfx_disc(f, PX, PY, 4, I_PLAYER);
+        if (xm) for (int k = 5; k <= 9; k++) { gfx_px(f, PX - k, PY, I_PLAYER); gfx_px(f, PX + k, PY, I_PLAYER); gfx_px(f, PX, PY - k, I_PLAYER); gfx_px(f, PX, PY + k, I_PLAYER); }   /* a star */
+    }
     if (S.state == ST_PLAY || S.state == ST_DEAD) {
         plate(f, 3, 3, 46, 30);
         gfx_rect(f, 6, 6, 10, 10, I_YOU); gfx_text8(f, 20, 7, "YOU", I_TEXT, 1);
@@ -251,14 +272,20 @@ static void render(Frame *f) {
     }
     if (S.state == ST_PLAY) {
         gfx_itoa(S.score, num);
+        if (xm) { char d[24] = "DAY "; int k = 4; for (char *q = num; *q; q++) d[k++] = *q; d[k] = 0; strcpy_(num, d); }   /* in season the rings are days */
         plate(f, W / 2 - 4 * (int)strlen(num) - 4, 3, 8 * (int)strlen(num) + 8, 20);
         gfx_text16_c(f, 5, num, I_TEXT, 1);
+        if (xm && S.banner_t > 0.0) {                         /* a banner when the twenty-fourth door opens */
+            int bw = 8 * (int)strlen(S.banner) * 2 + 16;
+            plate(f, (W - bw) / 2, 80, bw, 30);
+            gfx_text16_c(f, 87, S.banner, I_TEXT, 2);
+        }
     } else if (S.state == ST_DEAD) {
         int r = (int)(S.dead_t * 130.0);
         gfx_ring(f, PX, PY, r, I_RING); gfx_ring(f, PX, PY, r + 1, I_RING);
         plate(f, 60, 54, 200, 108);
         gfx_itoa(S.score, num);
-        gfx_text8_c(f, 62, "SCORE", I_TEXT, 1);
+        gfx_text8_c(f, 62, g_theme.on ? "DAYS" : "SCORE", I_TEXT, 1);
         gfx_text16_c(f, 74, num, I_TEXT, 2);
         for (int i = 0; i < 5; i++) line[i] = "BEST "[i];
         gfx_itoa(S.best, line + 5);
@@ -266,8 +293,8 @@ static void render(Frame *f) {
         if (S.dead_t > 0.6) gfx_text8_c(f, 140, "PRESS TO RETRY", I_TEXT, 1);
     } else {
         plate(f, 24, 10, 272, 52); plate(f, 10, 112, 300, 72);
-        gfx_text16_c(f, 14, "PRISM RUN", I_TEXT, 2);
-        gfx_text8_c(f, 50, "A FLIGHT DOWN THE COLOUR WHEEL", I_TEXT, 1);
+        gfx_text16_c(f, 14, g_theme.on ? "ADVENT RUN" : "PRISM RUN", I_TEXT, 2);
+        gfx_text8_c(f, 50, g_theme.on ? "TWENTY-FOUR DOORS TO CHRISTMAS" : "A FLIGHT DOWN THE COLOUR WHEEL", I_TEXT, 1);
         gfx_text8_c(f, 118, "YOUR COLOUR DRIFTS AS YOU FLY", I_TEXT, 1);
         gfx_text8_c(f, 130, "NEVER TOUCH ITS OPPOSITE", I_TEXT, 1);
         gfx_text8_c(f, 148, "STEER: KEYS / STICK / MOUSE / TOUCH", I_TEXT, 1);

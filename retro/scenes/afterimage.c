@@ -45,8 +45,15 @@ static struct {
     float tick_acc;                 /* 0..1 of the way to the next tick: the palette ages smoothly between ticks */
     float x, y, ang;
     float pick_x, pick_y;
+    float bulb_d;                   /* how far since the last bulb on the string */
     double clock, dead_t;
 } S;
+
+/* in season: the spark's ornament (g: the cap, o: the glass, h: a glint) */
+static const char *const ORN[11] = {
+    "...ggg...", "...g.g...", "..ooooo..", ".ooooooo.", "ooohhoooo", "oohooooo.",
+    "ooooooooo", "ooooooooo", ".ooooooo.", "..ooooo..", "...ooo..." };
+static uint8_t ORNMAP[256];
 
 static uint8_t field[W * H];        /* the picture as the game keeps it: background, border and trail */
 static uint8_t bgimg[W * H];        /* what a pixel goes back to when its trail expires */
@@ -68,7 +75,8 @@ static void build_pal(Frame *f) {
     for (int i = 0; i < 8; i++) gfx_pal_hsv(f, I_BG + i, h0, 0.55f, 0.012f + 0.085f * (float)i / 7.0f);
     float pulse = 0.82f + 0.18f * m_sin(t * 3.0f);
     gfx_pal_hsv(f, I_BORDER0, h0 + 0.5f, 0.9f, pulse);
-    gfx_pal_hsv(f, I_BORDER1, h0 + 0.5f, 0.9f, pulse * 0.5f);
+    if (g_theme.on) gfx_pal_hsv(f, I_BORDER1, h0 + 0.5f, 0.10f, 0.80f * pulse);            /* the other stripe is white */
+    else gfx_pal_hsv(f, I_BORDER1, h0 + 0.5f, 0.9f, pulse * 0.5f);
     gfx_pal_hsv(f, I_PICK, h0, 0.6f, 0.85f + 0.15f * m_sin(t * 5.0f));
     gfx_pal_hsv(f, I_PICKDOT, h0, 0.4f, 1.0f);
     gfx_pal_hsv(f, I_HALO, h0, 0.75f, 0.35f);
@@ -102,7 +110,7 @@ static void build_bg(void) {
             int e = x < W - 1 - x ? x : W - 1 - x;
             int ey = y < H - 1 - y ? y : H - 1 - y;
             if (ey < e) e = ey;
-            bgimg[y * W + x] = (uint8_t)(e < BORDER ? (e < 2 ? I_BORDER0 : I_BORDER1) : I_BG + lvl);
+            bgimg[y * W + x] = (uint8_t)(e < BORDER ? (g_theme.on ? ((((x + y) >> 2) & 1) ? I_BORDER0 : I_BORDER1) : (e < 2 ? I_BORDER0 : I_BORDER1)) : I_BG + lvl);   /* in season: a candy-cane edge */
         }
     memcpy(field, bgimg, sizeof field);
 }
@@ -121,8 +129,13 @@ static void stamp_disc(int cx, int cy, float r, int level, int empty_only) {
         }
     }
 }
-static void stamp_head(float x, float y) {                  /* a glow built from brightness steps: halo under, core over */
+static void stamp_head(float x, float y, int bulb) {        /* a glow built from brightness steps: halo under, core over */
     int cx = (int)(x + 0.5f), cy = (int)(y + 0.5f);
+    if (g_theme.on) {                                       /* in season the trail is a string of fairy lights: a thin wire, a bulb every so often */
+        if (bulb) { stamp_disc(cx, cy, 5.5f, 0, 1); stamp_disc(cx, cy, 4.2f, 1, 1); stamp_disc(cx, cy, 3.2f, 2, 0); stamp_disc(cx, cy, 1.8f, 3, 0); }
+        else stamp_disc(cx, cy, 1.2f, 2, 0);
+        return;
+    }
     stamp_disc(cx, cy, 5.5f, 0, 1);
     stamp_disc(cx, cy, 4.5f, 1, 1);
     stamp_disc(cx, cy, RADIUS, 2, 0);
@@ -177,18 +190,21 @@ static void load_best(void) {
 }
 
 static void begin(void) {
-    S.hue = rng_f(&S.rng);
+    S.hue = theme_base_hue(&S.rng);
     S.score = 0; S.state = ST_PLAY;
     S.x = W * 0.5f; S.y = H * 0.5f; S.ang = -PI_F * 0.5f;
     memcpy(field, bgimg, sizeof field);
     spawn_pick();
+    S.bulb_d = 9.0f;
     snd_sfx(SFX_START);
+    snd_music_play(MU_JINGLE);
 }
 
 static void enter(uint32_t seed) {
+    ORNMAP['g'] = I_CORE; ORNMAP['o'] = I_PICK; ORNMAP['h'] = I_PICKDOT;
     for (int i = BASE; i < 256; i++) { slot_of[i] = (uint8_t)((i - BASE) / LEVELS); level_of[i] = (uint8_t)((i - BASE) % LEVELS); }
     S.rng = seed ? seed : 1u;
-    S.hue = rng_f(&S.rng);
+    S.hue = theme_base_hue(&S.rng);
     S.state = ST_MENU; S.score = 0; S.tick = 0; S.tick_acc = 0.0f; S.clock = 0.0; S.dead_t = 0.0;
     S.x = W * 0.5f; S.y = H * 0.5f; S.ang = -PI_F * 0.5f;
     load_best();
@@ -199,6 +215,7 @@ static void enter(uint32_t seed) {
 static void die(void) {
     S.state = ST_DEAD; S.dead_t = 0.0;
     snd_sfx(SFX_DIE);
+    snd_music_stop();
     if (S.score > S.best) {
         S.best = S.score;
         best_set(S.best);
@@ -246,6 +263,7 @@ static void update(double dt, const Input *in) {
         float m = TURN * (float)dt * (0.35f + 0.65f * mag);
         S.ang += clampf(d, -m, m);
     }
+    snd_music_tempo(1.0f + 0.025f * (float)(S.score > 20 ? 20 : S.score));          /* it quickens as you do */
     float speed = SPEED0 + (S.score > 20 ? 20 : S.score) * 1.2f;
     float dist = speed * (float)dt;
     int steps = (int)(dist / 1.5f) + 1;
@@ -262,28 +280,53 @@ static void update(double dt, const Input *in) {
             snd_sfx_note(SFX_PICKUP, S.score);
             spawn_pick();
         }
-        stamp_head(S.x, S.y);
+        S.bulb_d += m_sqrt(sx * sx + sy * sy);
+        int bulb = S.bulb_d >= 9.0f;
+        if (bulb) S.bulb_d -= 9.0f;
+        stamp_head(S.x, S.y, bulb);
     }
 }
 
 /* ---- drawing over the field ------------------------------------------ */
 static void render(Frame *f) {
-    memcpy(f->pix, field, sizeof field);
+    if (g_theme.on) {                                       /* ripe trail is striped as well as hot: the danger is not only a colour */
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++) {
+                int v = field[y * W + x];
+                if (lethal[v] && (((x + y) >> 1) & 1)) v -= 2;
+                f->pix[y * W + x] = (uint8_t)v;
+            }
+    } else memcpy(f->pix, field, sizeof field);
     build_pal(f);
     char num[16], line[32];
     int px = (int)(S.pick_x + 0.5f), py = (int)(S.pick_y + 0.5f);
-    gfx_ring(f, px, py, 4 + (int)(1.5f + 1.5f * m_sin((float)S.clock * 5.0f)), I_PICK);
-    gfx_disc(f, px, py, 1, I_PICKDOT);
+    if (g_theme.on) gfx_blit(f, px - 4, py - 5 + (int)(1.5f * m_sin((float)S.clock * 4.0f)), ORN, 11, ORNMAP);   /* a bauble, swaying */
+    else {
+        gfx_ring(f, px, py, 4 + (int)(1.5f + 1.5f * m_sin((float)S.clock * 5.0f)), I_PICK);
+        gfx_disc(f, px, py, 1, I_PICKDOT);
+    }
     int hx = (int)(S.x + 0.5f), hy = (int)(S.y + 0.5f);
     if (S.state == ST_MENU) { gfx_disc(f, hx, hy, 6, I_HALO); gfx_disc(f, hx, hy, 3 + (m_sin((float)S.clock * 2.0f) > 0.0f), I_CORE); }
     else if (S.state == ST_PLAY) gfx_disc(f, hx, hy, 2, I_CORE);
+    if (g_theme.on && S.state != ST_DEAD) {                  /* the sparkler's spray: eight rays, never quite the same length */
+        static const signed char RD[8][2] = { {1,0},{0,1},{-1,0},{0,-1},{1,1},{-1,1},{-1,-1},{1,-1} };
+        for (int k = 0; k < 8; k++) {
+            int len = 3 + (((int)(S.clock * 31.0) + k * 5) % 4);
+            for (int j = 2; j <= len; j++) gfx_px(f, hx + RD[k][0] * j, hy + RD[k][1] * j, j < 4 ? I_CORE : I_HALO);
+        }
+    }
     else {                                                   /* death: a ring runs out from where you were, the world flipping behind it */
         int r = (int)(S.dead_t * 130.0);
         gfx_ring(f, hx, hy, r, I_RING); gfx_ring(f, hx, hy, r + 1, I_RING);
+        if (g_theme.on) for (int k = 0; k < 16; k++) {        /* a bauble breaking: shards thrown out */
+            float a = (float)k * (TAU_F / 16.0f) + 0.2f * (float)(k & 1), d = (float)S.dead_t * (70.0f + 12.0f * (float)(k % 3));
+            int sx2 = hx + (int)(m_cos(a) * d), sy2 = hy + (int)(m_sin(a) * d);
+            gfx_px(f, sx2, sy2, I_RING); gfx_px(f, sx2 + 1, sy2, I_RING);
+        }
     }
     if (S.state == ST_MENU) {
-        gfx_text16_c(f, 14, "ANTIPODE", I_TEXT, 2);
-        gfx_text8_c(f, 52, "A F T E R I M A G E", I_TEXT, 1);
+        gfx_text16_c(f, 14, g_theme.on ? "SPARKLER" : "ANTIPODE", I_TEXT, 2);
+        gfx_text8_c(f, 52, g_theme.on ? "A SPARKLER ON A DARK NIGHT" : "A F T E R I M A G E", I_TEXT, 1);
         gfx_text8_c(f, 128, "YOUR TRAIL RIPENS INTO", I_TEXT, 1);
         gfx_text8_c(f, 140, "THE COLOUR YOU CANNOT TOUCH", I_TEXT, 1);
         gfx_text8_c(f, 160, "WASD / STICK / MOUSE / TOUCH", I_TEXT, 1);
@@ -302,7 +345,7 @@ static void render(Frame *f) {
     }
 }
 
-static int idle(void) { return S.state == ST_MENU; }
+static int idle(void) { return S.state == ST_MENU || (S.state == ST_DEAD && S.dead_t > 0.6); }
 const Scene scene_afterimage = { "AFTERIMAGE", W, H, enter, update, render, idle };
 
 /* for the test harness only: where things are, so a scripted bot can play */

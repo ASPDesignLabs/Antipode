@@ -91,6 +91,7 @@ int gfx_text_width(const char *s, int scale) { return (int)strlen(s) * 8 * scale
 
 void gfx_hsv(float h, float s, float v, int *r, int *g, int *b) {
     h -= m_floor(h);
+    if (g_theme.on) h = theme_wheel(h);                          /* the ring is the painter's wheel in season */
     float p = h * 6.0f;
     float fr = clampf(m_abs(p - 3.0f) - 1.0f, 0.0f, 1.0f);
     float fg = clampf(2.0f - m_abs(p - 2.0f), 0.0f, 1.0f);
@@ -142,5 +143,13 @@ void gfx_text_a(Frame *f, int x, int y, const char *s, int fg, int tall, int sca
                         if (BAY[(py & 3) * 4 + (px & 3)] < thr) gfx_px(f, px, py, (uint8_t)fg);
                     }
             }
+        }
+}
+
+void gfx_blit(Frame *f, int x, int y, const char *const *rows, int nrows, const uint8_t *map) {
+    for (int r = 0; r < nrows; r++)
+        for (int c = 0; rows[r][c]; c++) {
+            uint8_t v = map[(uint8_t)rows[r][c]];
+            if (v) gfx_px(f, x + c, y + r, v);
         }
 }

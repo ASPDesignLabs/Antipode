@@ -5,7 +5,7 @@
 CC      ?= cc
 CFLAGS  ?= -O2 -std=gnu11 -Wall -Wextra -Wno-unused-parameter -fno-math-errno
 INC      = -Icore
-SRC      = core/app.c core/gfx.c core/snd.c core/font_vga.c scenes/afterimage.c scenes/prism.c scenes/tidepool.c scenes/moth.c
+SRC      = core/app.c core/gfx.c core/theme.c core/snd.c core/font_vga.c scenes/afterimage.c scenes/prism.c scenes/tidepool.c scenes/moth.c
 
 all: host
 
@@ -36,6 +36,14 @@ play: build/web/index.html
 	@mkdir -p play
 	cp build/web/index.html play/index.html
 
+# The carols: render each tune alone and check every note's pitch against the score (needs numpy).
+build/melody: test/melody.c core/snd.c core/snd.h core/theme.c core/core.h
+	@mkdir -p build
+	$(CC) -O1 -std=gnu11 -fno-math-errno -Icore -o $@ test/melody.c core/theme.c -lm
+
+test-audio: build/melody
+	python3 test/melody.py build/melody
+
 smoke: build/host
 	@mkdir -p build/smoke
 	./build/host shot 1,2 build/smoke/menu 3
@@ -44,8 +52,9 @@ smoke: build/host
 	HOST_SCENE=1 ./build/host bot 60
 	HOST_SCENE=2 ./build/host bot 60
 	HOST_SCENE=3 ./build/host bot 60
+	HOST_THEME=classic ./build/host bot 60
 	./build/host bench 20
 
 clean:
 	rm -rf build
-.PHONY: all host web play smoke clean
+.PHONY: all host web play smoke test-audio clean

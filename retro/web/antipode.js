@@ -21,23 +21,41 @@
   const cstr = (p) => { const m = new Uint8Array(mem()); let s = ""; while (m[p]) s += String.fromCharCode(m[p++]); return s; };
   const KEYS = cstr(X.web_key_names()).split(" ");
   const K = {}; KEYS.forEach((n, i) => (K[n] = i));
+  if (KEYS.length !== X.web_key_count()) { fail("This build is out of step: the page's keys do not match the game's."); return; }
 
-  // ---- the saved number (best score), two bytes in localStorage ----
+  // ---- what is saved: the best score of each scene and the pair of colours last chosen, 16 bytes kept as hex in localStorage ----
+  const SAVE = "antipode.retro.save";
   try {
-    const v = parseInt(localStorage.getItem("antipode.retro.best") || "0", 10) | 0;
-    if (v > 0) { const b = new Uint8Array(mem(), X.web_slot_buf(), 2); b[0] = v & 255; b[1] = (v >> 8) & 255; X.web_slot_load(2); }
+    let hex = localStorage.getItem(SAVE);
+    if (!hex) {                                                // an older save held only the first scene's best, as a number
+      const v = parseInt(localStorage.getItem("antipode.retro.best") || "0", 10) | 0;
+      if (v > 0) hex = (v & 255).toString(16).padStart(2, "0") + ((v >> 8) & 255).toString(16).padStart(2, "0");
+    }
+    if (hex) {
+      const n = Math.min(16, hex.length >> 1), b = new Uint8Array(mem(), X.web_slot_buf(), 16);
+      for (let i = 0; i < n; i++) b[i] = parseInt(hex.substr(i * 2, 2), 16) || 0;
+      X.web_slot_load(n);
+    }
   } catch (_) {}
   function flushSlot() {
     const n = X.web_slot_take();
     if (!n) return;
-    const b = new Uint8Array(mem(), X.web_slot_buf(), n);
-    try { localStorage.setItem("antipode.retro.best", String(b[0] | (b[1] << 8))); } catch (_) {}
+    let hex = "";
+    for (const v of new Uint8Array(mem(), X.web_slot_buf(), n)) hex += v.toString(16).padStart(2, "0");
+    try { localStorage.setItem(SAVE, hex); } catch (_) {}
   }
 
   X.web_config(1, 70, 100);
-  const want = (new URLSearchParams(location.search).get("mode") || "").toLowerCase().replace(/[^a-z]/g, "");
-  const names = cstr(X.web_scene_names()).split("\n");
-  const first = names.findIndex((n) => n.toLowerCase().replace(/[^a-z]/g, "") === want);
+  // The season is on by default (?theme=classic is the plain game); ?pair=gold plays gold and blue, ?pair=red red and green;
+  // with neither, the pair last chosen with T (or Y, or a tap on the corner) is kept.
+  const QS = new URLSearchParams(location.search);
+  const pairQ = (QS.get("pair") || "").toLowerCase();
+  X.web_theme(QS.get("theme") === "classic" ? 0 : 1, pairQ === "gold" ? 1 : pairQ === "red" ? 0 : -1);
+  const want = (QS.get("mode") || "").toLowerCase().replace(/[^a-z]/g, "");
+  const norm = (n) => n.toLowerCase().replace(/[^a-z]/g, "");
+  const names = cstr(X.web_scene_names()).split("\n"), titles = cstr(X.web_scene_titles()).split("\n");
+  let first = names.findIndex((n) => norm(n) === want);
+  if (first < 0) first = titles.findIndex((n) => norm(n) === want);          // ?mode=sparkler, advent, sleighbells, lantern
   X.web_select(first < 0 ? 0 : first);                       // ?mode=prismrun, ?mode=afterimage
   X.web_start();
   let W = X.web_width(), H = X.web_height();
@@ -82,7 +100,7 @@
 
   // ---- keyboard ----
   const CODE = { ArrowUp: "UP", ArrowDown: "DOWN", ArrowLeft: "LEFT", ArrowRight: "RIGHT", KeyW: "W", KeyA: "A", KeyS: "S", KeyD: "D",
-                 Space: "SPACE", Enter: "ENTER", Escape: "ESC", KeyM: "M", KeyQ: "Q", KeyE: "E" };
+                 Space: "SPACE", Enter: "ENTER", Escape: "ESC", KeyM: "M", KeyQ: "Q", KeyE: "E", KeyT: "T" };
   addEventListener("keydown", (e) => {
     if (e.repeat) return;
     if (e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault();

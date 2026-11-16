@@ -25,6 +25,8 @@ void gfx_pal_hsv(Frame *f, int i, float h, float s, float v);
 
 void gfx_ring(Frame *f, int cx, int cy, int r, uint8_t c);          /* a circle's outline */
 void gfx_itoa(int v, char *out);
+/* A sprite as rows of characters: each is looked up in `map` (a 256-entry table of palette indices; 0 is clear), the top left at x,y. */
+void gfx_blit(Frame *f, int x, int y, const char *const *rows, int nrows, const uint8_t *map);
 /* text that fades by ordered dither (a single palette entry cannot blend): alpha 0..1; tall: 8x16 glyphs, else 8x8 */
 void gfx_text_a(Frame *f, int x, int y, const char *s, int fg, int tall, int scale, float alpha);
 void gfx_text8_c(Frame *f, int y, const char *s, int fg, int scale);    /* centred on the picture */

@@ -119,13 +119,13 @@ static void place_pearl(void) {
 static void clear_water(void) { memset(fa, 0, sizeof fa); memset(fb, 0, sizeof fb); S.pa = 0; }
 
 static void reset_run(void) {
-    S.hue = rf();
+    S.hue = theme_base_hue(&S.rng);
     S.score = 0; S.x = W * 0.5f; S.y = H * 0.5f; S.vx = S.vy = 0.0f;
     S.nem = 0; clear_water();
     while (S.nem < want_emitters()) { place_emitter(&S.em[S.nem]); S.nem++; }
     place_pearl();
 }
-static void begin(void) { reset_run(); S.state = ST_PLAY; snd_sfx(SFX_START); }
+static void begin(void) { reset_run(); S.state = ST_PLAY; snd_sfx(SFX_START); snd_music_play(MU_JOY); }
 
 static void enter(uint32_t seed) {
     S.rng = seed ? seed : 1u;
@@ -146,6 +146,7 @@ static void enter(uint32_t seed) {
 static void die(void) {
     S.state = ST_DEAD; S.dead_t = 0.0;
     snd_sfx(SFX_DIE);
+    snd_music_stop();
     if (S.score > S.best) { S.best = S.score; best_set(S.best); }
 }
 
@@ -182,7 +183,8 @@ static int lethal_here(void) {
     return 0;
 }
 
-static void fire(Emitter *e) { drop(fb[S.pa], e->x, e->y, 13000, 0); e->t = interval() * (0.85f + 0.3f * rf()); }
+static void fire(Emitter *e) { if (g_theme.on) snd_sfx_note(SFX_PICKUP, 1 + (int)(e - S.em)); drop(fb[S.pa], e->x, e->y, 13000, 0);   /* in season a pulse is a bell */
+    e->t = interval() * (0.85f + 0.3f * rf()); }
 
 static void update(double dt, const Input *in) {
     S.clock += dt;
@@ -214,6 +216,7 @@ static void update(double dt, const Input *in) {
         if (in->act && S.dead_t > 0.6) begin();
     }
 
+    if (playing) snd_music_tempo(0.9f + 0.03f * (float)(S.score > 20 ? 20 : S.score));
     S.step_acc += dt * STEP_HZ;
     int steps = (int)S.step_acc;
     if (steps > 3) steps = 3;
@@ -268,6 +271,11 @@ static void build_pal(Frame *f) {
     gfx_pal_hsv(f, I_TEXT, h0, 0.18f, S.state == ST_PLAY ? 0.9f : 0.78f + 0.22f * m_sin(t * 2.5f));
 }
 
+/* in season: a bell for each of the pool's sources, a flake for a pearl (o: body, g: rim, c: clapper, x: the flake's heart) */
+static const char *const BELL[10] = {
+    "....o....", "...ooo...", "..ooooo..", "..ooooo..", ".ooooooo.", ".ooooooo.", "ooooooooo", "ggggggggg", "....c....", "...ccc..." };
+static const char *const FLAKE[7] = { "o..o..o", ".o.o.o.", "..ooo..", "ooooxoo", "..ooo..", ".o.o.o.", "o..o..o" };
+
 static int level(int h, int q) { return clampi(h / q + 7 + (h < 0 && h % q ? -1 : 0), 0, LV - 1); }
 static void plate(Frame *f, int x, int y, int w, int h) { gfx_rect(f, x, y, w, h, I_PLATE); }
 
@@ -278,24 +286,45 @@ static void render(Frame *f) {
         uint8_t *r0 = f->pix + (gy * 2) * W, *r1 = r0 + W;
         for (int gx = 0; gx < GW; gx++) {
             int i = gy * GW + gx;
-            uint8_t px = (uint8_t)(BASE + level(a[i], QA) * LV + level(b[i], QB));
+            int la = level(a[i], QA), lb = level(b[i], QB);
+            if (g_theme.on && a[i] + b[i] >= 1500 && ((gx + gy) & 1)) lb = lb > 3 ? lb - 3 : 0;   /* water standing up is striped, not only hot */
+            uint8_t px = (uint8_t)(BASE + la * LV + lb);
             r0[gx * 2] = r0[gx * 2 + 1] = r1[gx * 2] = r1[gx * 2 + 1] = px;
         }
     }
     char num[16], line[32];
     for (int i = 0; i < S.nem; i++) {                        /* the pool's sources: they blink before they pulse */
         int tel = S.state == ST_PLAY && S.em[i].t < 0.7f && ((int)(S.clock * 14.0) & 1);
-        gfx_disc(f, (int)S.em[i].x, (int)S.em[i].y, 3, tel ? I_EMITHOT : I_EMIT);
+        if (g_theme.on) {                                    /* a bell, swinging as it is about to ring */
+            uint8_t bm[256]; memset(bm, 0, sizeof bm);
+            bm['o'] = tel ? I_EMITHOT : I_EMIT; bm['g'] = I_EMITHOT; bm['c'] = I_EMITHOT;
+            int sw = S.state == ST_PLAY && S.em[i].t < 0.7f ? (((int)(S.clock * 14.0) & 1) ? 1 : -1) : 0;
+            gfx_blit(f, (int)S.em[i].x - 4 + sw, (int)S.em[i].y - 5, BELL, 10, bm);
+        } else gfx_disc(f, (int)S.em[i].x, (int)S.em[i].y, 3, tel ? I_EMITHOT : I_EMIT);
         if (S.state == ST_PLAY && S.em[i].t < 0.7f) gfx_ring(f, (int)S.em[i].x, (int)S.em[i].y, 6 + (int)((0.7f - S.em[i].t) * 6.0f), I_EMIT);
     }
     int px = (int)(S.pearl_x + 0.5f), py = (int)(S.pearl_y + 0.5f);
-    if (S.state != ST_MENU) { gfx_ring(f, px, py, 4 + (int)(1.5f + 1.5f * m_sin((float)S.clock * 5.0f)), I_PEARL); gfx_disc(f, px, py, 1, I_PEARLDOT); }
+    if (S.state != ST_MENU) {
+        if (g_theme.on) {                                    /* a snowflake, bobbing */
+            uint8_t fm[256]; memset(fm, 0, sizeof fm); fm['o'] = I_PEARL; fm['x'] = I_PEARLDOT;
+            gfx_blit(f, px - 3, py - 3 + (int)(1.5f * m_sin((float)S.clock * 4.0f)), FLAKE, 7, fm);
+        } else { gfx_ring(f, px, py, 4 + (int)(1.5f + 1.5f * m_sin((float)S.clock * 5.0f)), I_PEARL); gfx_disc(f, px, py, 1, I_PEARLDOT); }
+    }
     int hx = (int)(S.x + 0.5f), hy = (int)(S.y + 0.5f);
-    if (S.state != ST_DEAD || S.dead_t < 0.35) { gfx_disc(f, hx, hy, 6, I_PHALO); gfx_disc(f, hx, hy, 3, I_PLAYER); }
+    if (S.state != ST_DEAD || S.dead_t < 0.35) {
+        gfx_disc(f, hx, hy, 6, I_PHALO);
+        if (g_theme.on) {                                    /* a little sleigh, facing the way it goes */
+            int dir = S.vx >= 0.0f ? 1 : -1;
+            gfx_rect(f, hx - 4, hy - 1, 8, 3, I_PLAYER);
+            gfx_rect(f, dir > 0 ? hx - 5 : hx + 4, hy - 3, 2, 3, I_PLAYER);
+            gfx_line(f, hx - 6, hy + 3, hx + 6, hy + 3, I_PLAYER);
+            gfx_px(f, hx + 6 * dir, hy + 2, I_PLAYER); gfx_px(f, hx + 7 * dir, hy + 1, I_PLAYER);
+        } else gfx_disc(f, hx, hy, 3, I_PLAYER);
+    }
     if (S.state == ST_PLAY || S.state == ST_DEAD) {
         plate(f, 3, 3, 46, 30);
         gfx_rect(f, 6, 6, 10, 10, I_YOU); gfx_text8(f, 20, 7, "YOU", I_TEXT, 1);
-        gfx_rect(f, 6, 20, 10, 10, I_NOT); gfx_text8(f, 20, 21, "POOL", I_TEXT, 1);
+        gfx_rect(f, 6, 20, 10, 10, I_NOT); gfx_text8(f, 20, 21, g_theme.on ? "BELLS" : "POOL", I_TEXT, 1);
     }
     if (S.state == ST_PLAY) {
         gfx_itoa(S.score, num);
@@ -306,7 +335,7 @@ static void render(Frame *f) {
         gfx_ring(f, hx, hy, r, I_RING); gfx_ring(f, hx, hy, r + 1, I_RING);
         plate(f, 60, 54, 200, 108);
         gfx_itoa(S.score, num);
-        gfx_text8_c(f, 62, "PEARLS", I_TEXT, 1);
+        gfx_text8_c(f, 62, g_theme.on ? "FLAKES" : "PEARLS", I_TEXT, 1);
         gfx_text16_c(f, 74, num, I_TEXT, 2);
         for (int i = 0; i < 5; i++) line[i] = "BEST "[i];
         gfx_itoa(S.best, line + 5);
@@ -314,9 +343,9 @@ static void render(Frame *f) {
         if (S.dead_t > 0.6) gfx_text8_c(f, 140, "PRESS TO RETRY", I_TEXT, 1);
     } else {
         plate(f, 24, 10, 272, 52); plate(f, 10, 112, 300, 72);
-        gfx_text16_c(f, 14, "TIDEPOOL", I_TEXT, 2);
-        gfx_text8_c(f, 50, "A POOL THAT ANSWERS IN KIND", I_TEXT, 1);
-        gfx_text8_c(f, 118, "THE POOL RISES IN YOUR OPPOSITE", I_TEXT, 1);
+        gfx_text16_c(f, 14, g_theme.on ? "SLEIGH BELLS" : "TIDEPOOL", I_TEXT, 2);
+        gfx_text8_c(f, 50, g_theme.on ? "THE BELLS ANSWER IN KIND" : "A POOL THAT ANSWERS IN KIND", I_TEXT, 1);
+        gfx_text8_c(f, 118, g_theme.on ? "THE BELLS RING IN YOUR OPPOSITE" : "THE POOL RISES IN YOUR OPPOSITE", I_TEXT, 1);
         gfx_text8_c(f, 130, "WHERE THE CRESTS MEET, YOU DIE", I_TEXT, 1);
         gfx_text8_c(f, 148, "STEER: KEYS / STICK / MOUSE / TOUCH", I_TEXT, 1);
         gfx_text8_c(f, 162, "PRESS ANY KEY", I_TEXT, 1);
