@@ -19,7 +19,6 @@
   const WRAP64 = 64;
 
   const UPDATE = `
-in vec2 vUv; out vec4 o;
 uniform sampler2D uPrev;
 uniform vec2 uA, uB;
 uniform float uR, uAspect, uNow, uHue, uT, uFadeEnd, uStamp;
@@ -40,11 +39,10 @@ void main(){
       c = vec4(uHue, hi / 255.0, (n - hi * 256.0) / 255.0, 1.0);
     }
   }
-  o = c;
+  outColor = c;
 }`;
 
   const DISPLAY = `
-in vec2 vUv; out vec4 o;
 uniform sampler2D uTrail;
 uniform vec2 uRes, uPlayer, uPick;
 uniform float uAspect, uNow, uHue, uT, uFadeEnd, uLethal, uBorder, uR, uTime, uDeath;
@@ -115,7 +113,7 @@ void main(){
     col += hsv2rgb(vec3(uHue + 0.5, 0.7, 1.0)) * e * 1.4;
     col += vec3(exp(-uDeath * 9.0) * 0.35);
   }
-  o = vec4(min(col, 1.0), 1.0);
+  outColor = vec4(min(col, 1.0), 1.0);
 }`;
 
   function wrapAngle(a) {

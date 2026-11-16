@@ -5,8 +5,9 @@
     const engine = new AP.Engine(document.getElementById('c'));
     window.antipode = engine;   // handy for debugging / automated tests
     engine.start();
+    console.log('Antipode: WebGL' + engine.glVersion);
   } catch (err) {
-    fail.textContent = String(err && err.message || err);
+    fail.textContent = String(err && err.message || err) + '\n\n' + navigator.userAgent;
     fail.hidden = false;
     console.error(err);
   }

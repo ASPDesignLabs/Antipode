@@ -1,5 +1,5 @@
 /* Antipode — engine.
- * WebGL2, one fullscreen triangle, no buffers, no assets.
+ * WebGL2 (falls back to WebGL1), one fullscreen triangle, no assets.
  * Owns: GL setup, shader/target helpers, resize + adaptive resolution,
  * the main loop, the menu/play/dead state machine, and the (tiny) DOM HUD.
  *
@@ -9,20 +9,28 @@
 (function (AP) {
   'use strict';
 
-  const VERT = '#version 300 es\n' +
-    'out vec2 vUv;\n' +
-    'void main(){\n' +
-    '  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n' +
-    '  vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n' +
-    '}\n';
-  const FRAG_HEAD = '#version 300 es\nprecision highp float;\nprecision highp int;\n';
+  // Shaders are written once in GLSL ES 3.00 style and wrapped for WebGL2 or WebGL1.
+  // Fragment shaders get: `in vec2 vUv;` and write to `outColor`; `texture()` works in both.
+  const HEAD2 = {
+    vert: '#version 300 es\nin vec2 aPos;\nout vec2 vUv;\n',
+    frag: '#version 300 es\nprecision highp float;\nprecision highp int;\nin vec2 vUv;\nout vec4 outColor;\n'
+  };
+  const HEAD1 = {
+    vert: 'attribute vec2 aPos;\nvarying vec2 vUv;\n',
+    frag: '#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n' +
+          'varying vec2 vUv;\n#define outColor gl_FragColor\n#define texture texture2D\n'
+  };
+  const VERT_BODY = 'void main(){ vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }\n';
 
   function Engine(canvas) {
-    const gl = canvas.getContext('webgl2', {
-      antialias: false, alpha: false, depth: false, stencil: false,
-      powerPreference: 'high-performance'
-    });
-    if (!gl) throw new Error('WebGL2 is not available on this device.');
+    const opts = { antialias: false, alpha: false, depth: false, stencil: false, powerPreference: 'high-performance' };
+    const forceGL1 = new URLSearchParams(location.search).get('gl') === '1';
+    let gl = forceGL1 ? null : canvas.getContext('webgl2', opts);
+    const isGL2 = !!gl;
+    if (!gl) gl = canvas.getContext('webgl', opts) || canvas.getContext('experimental-webgl', opts);
+    if (!gl) throw new Error('Neither WebGL2 nor WebGL1 is available on this device.');
+    const HEAD = isGL2 ? HEAD2 : HEAD1;
+    this.glVersion = isGL2 ? 2 : 1;
     const self = this;
     this.gl = gl;
     this.canvas = canvas;
@@ -46,13 +54,21 @@
       }
       return s;
     }
-    const vs = compile(gl.VERTEX_SHADER, VERT);
+    const vs = compile(gl.VERTEX_SHADER, HEAD.vert + VERT_BODY);
+
+    // One oversized triangle covers the screen.
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
     // Compile a fragment shader (version/precision/hue helpers are prepended).
     this.program = function (fragBody) {
-      const fs = compile(gl.FRAGMENT_SHADER, FRAG_HEAD + AP.GLSL_HUE + fragBody);
+      const fs = compile(gl.FRAGMENT_SHADER, HEAD.frag + AP.GLSL_HUE + fragBody);
       const p = gl.createProgram();
       gl.attachShader(p, vs); gl.attachShader(p, fs);
+      gl.bindAttribLocation(p, 0, 'aPos');
       gl.linkProgram(p);
       if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('Program link failed:\n' + gl.getProgramInfoLog(p));
       return { p: p, locs: {} };
@@ -86,7 +102,7 @@
     this.target = function (w, h) {
       const tex = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texImage2D(gl.TEXTURE_2D, 0, isGL2 ? gl.RGBA8 : gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
