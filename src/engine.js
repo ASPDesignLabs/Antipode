@@ -25,10 +25,24 @@
   function Engine(canvas) {
     const opts = { antialias: false, alpha: false, depth: false, stencil: false, powerPreference: 'high-performance' };
     const forceGL1 = new URLSearchParams(location.search).get('gl') === '1';
-    let gl = forceGL1 ? null : canvas.getContext('webgl2', opts);
-    const isGL2 = !!gl;
-    if (!gl) gl = canvas.getContext('webgl', opts) || canvas.getContext('experimental-webgl', opts);
-    if (!gl) throw new Error('Neither WebGL2 nor WebGL1 is available on this device.');
+    // Try the preferred attributes first, then bare defaults (some blocklists reject specific attributes).
+    // Chromium reports *why* creation failed via this event; keep it for the error screen.
+    const why = [];
+    canvas.addEventListener('webglcontextcreationerror', function (ev) { why.push(ev.statusMessage || '(no message)'); });
+    const attempts = [['webgl2', opts], ['webgl2', {}], ['webgl', opts], ['webgl', {}], ['experimental-webgl', {}]];
+    let gl = null, isGL2 = false;
+    for (let i = 0; i < attempts.length && !gl; i++) {
+      if (forceGL1 && attempts[i][0] === 'webgl2') continue;
+      try { gl = canvas.getContext(attempts[i][0], attempts[i][1]); } catch (err) { why.push(String(err)); }
+      isGL2 = !!gl && attempts[i][0] === 'webgl2';
+    }
+    if (!gl) {
+      throw new Error('Neither WebGL2 nor WebGL1 is available on this device.\n' +
+        'WebGL2RenderingContext: ' + (typeof WebGL2RenderingContext !== 'undefined') +
+        '  WebGLRenderingContext: ' + (typeof WebGLRenderingContext !== 'undefined') +
+        '  WebGPU: ' + (typeof navigator !== 'undefined' && !!navigator.gpu) +
+        (why.length ? '\nReason: ' + why.filter(function (v, i, a) { return a.indexOf(v) === i; }).join(' | ') : ''));
+    }
     const HEAD = isGL2 ? HEAD2 : HEAD1;
     this.glVersion = isGL2 ? 2 : 1;
     const self = this;
