@@ -33,7 +33,7 @@ Left and right (arrow keys, a tap or click at either side, a swipe, the stick or
 them on a title or game-over screen; the screen fades out to black and the next one fades in. (Through black because there
 is one palette per frame: two scenes cannot be mixed pixel by pixel.) Mid-run, left and right steer as usual. A small
 `< 1/2 >` hint dissolves in when you arrive or move the mouse; a pointer inside a side strip makes that arrow bigger.
-`?mode=afterimage`, `?mode=prism-run` or `?mode=tidepool` starts on one.
+`?mode=afterimage`, `?mode=prism-run`, `?mode=tidepool` or `?mode=moth` starts on one.
 
 - **Afterimage**: you glide leaving a trail that ripens into your complement, then kills.
 - **Prism Run**: you fly down a tunnel of rainbow cells and roll it left and right. Your own colour drifts round the wheel;
@@ -42,6 +42,9 @@ is one palette per frame: two scenes cannot be mixed pixel by pixel.) Mid-run, l
 - **Tidepool**: you skim a dark pool leaving a wake; sources at its edges answer with waves in your opposite colour. Where the two
   stand up together the water kills. Your wake grows with your speed, so slow water is safe water. Collect pearls; the pool pulses
   faster and gathers more sources as you do.
+- **Moth**: you are a point of light in a dark that answers in your opposite. Blobs of anti-light chase you; touch one and you
+  are gone. They are metaballs: near each other their fields join in a bridge, and touching they merge into one bigger, slower
+  blob. Lure them together and slip round what is left. A merge is a point; the dark sends more the longer you last.
 
 ### How Afterimage works here
 
@@ -75,6 +78,15 @@ three times finer than the pool's, because a wake is low. The lethal test reads 
 A wake is raised to your speed (not added to), so it never piles up on a slow boat; at full speed it adds about 700, which is why
 moving through a rising crest is deadly and standing in it is not.
 
+### How Moth works here
+
+Nothing is drawn per blob. Each is *splatted* into a field through a precomputed radial kernel, `(1 - (d/R)^2)^2` with `R` 2.2 times
+the radius and scaled so the surface (field = 1) sits at the radius, by one table lookup a pixel; two blobs' bridge is just the sum
+of their two skirts. Your own light is a second small field. A pixel is one palette index made of both, `16 + level(your light) * 20
++ level(the dark)`, 240 entries, so the palette draws the soft aura below the surface, the hot rim at it, the solid body inside, your
+hue where your light falls and the hues between where the two overlap. Touching blobs merge by area, keeping their momentum; a blob
+past a size no longer merges but pushes apart, so the dark has a limit. The lethal test is the field's value under the point of light.
+
 ## Controls
 
 Keyboard (WASD / arrows), mouse (Afterimage heads for the cursor; Prism Run rolls toward its side), touch (the same, by finger),
@@ -87,12 +99,17 @@ gamepad (left stick / d-pad). Any key, click, tap in the middle, or button start
   new, slower start (1.5 rings a second, measured: 6 rings at 5 s, 15 at 10 s, 68 at 30 s, the old top speed by ring 150). Tidepool's
   bot, which heads for pearls and slows in rising water, collects up to 8 a life with about one death in 20 s; with no input you
   are safe (it is a pool, not a clock: there is nothing to do but collect). About 0.05 ms (Afterimage), 0.2 ms (Prism Run) and 0.25 ms
-  (Tidepool) a frame natively.
+  (Tidepool) a frame natively; Moth about 0.13 ms.
+- **Sanitizers:** every scene, 90 s of its bot, and scripted switching through all four with taps and the wrap, under AddressSanitizer
+  and UBSan: clean.
+- **Moth, native:** the bot (which keeps clear of the dark, more of the big blobs, and the walls) scores up to 8 merges and lasts
+  about 16 s a life, 18 deaths in 300 s; with no input you die in about 7 s. About 0.13 ms a frame.
 - **Chromium, headless:** the web build runs; keyboard, mouse (hover, click, drag) and a simulated gamepad drive it. Every way of
-  switching scenes works, through all three and round the ends; `?mode=` picks one. No errors; about 0.14 ms to step and 0.28 ms
-  to draw Tidepool.
+  switching scenes works, through all four and round the ends; `?mode=` picks one. No errors; about 0.04 ms to step and 0.32 ms
+  to draw Moth.
 - **Found by testing, and fixed:** Prism Run's first rings could be unflyable (a one-cell way that shifted sideways between rings;
   lethal hues next to the opposite that flipped as your colour drifted). Tidepool's own wake killed the boat on its own when it
   moved slowly (the wake was added every step and piled up), and its first waves were too faint to ever be lethal.
 - **Not tested:** an Xbox, a real controller, real touch, or whether the sound is audible. Feel and balance are first guesses;
-  Tidepool's strengths (pulse, wake, the lethal height) were set by measurement and a bot, not by a person's hand.
+  Tidepool's strengths (pulse, wake, the lethal height) and Moth's (the blobs' speed, the spawn rate, the merge size) were set by
+  measurement and a simple bot, not by a person's hand; a person who lures the blobs together should do better than the bot.

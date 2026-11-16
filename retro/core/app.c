@@ -7,7 +7,7 @@
 #define ZONE 64                     /* the left and right strips of the picture, in pixels: a tap there switches scenes */
 #define SWIPE 36                    /* a drag this far sideways is a swipe */
 
-static const Scene *const SCENES[SCENE_COUNT] = { &scene_afterimage, &scene_prism, &scene_tidepool };
+static const Scene *const SCENES[SCENE_COUNT] = { &scene_afterimage, &scene_prism, &scene_tidepool, &scene_moth };
 
 static struct {
     AppConfig cfg;
