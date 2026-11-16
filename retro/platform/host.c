@@ -5,7 +5,7 @@
  *   host bot   <seconds>                    a scripted player that steers at the spark; prints how it did
  *
  * HOST_INPUT plays a person: "1:+SPACE;2:+LEFT;2.5:-LEFT;3:p160,100;4:pu" (+/- keys, pX,Y the pointer on at a place,
- * pd the pointer pressed, pr released, pu the pointer gone, a stick as aLX0.8, a button +PAD_A). HOST_SCENE=1 starts in Prism Run.
+ * pd the pointer pressed, pr released, pu the pointer gone, a stick as aLX0.8, a button +PAD_A). HOST_SCENE=1 starts in Prism Run, 2 in Tidepool.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +17,7 @@
 
 void afterimage_debug(int *score, int *state, float *pick_x, float *pick_y, float *x, float *y);
 float prism_debug(int *score, int *state);
+void tidepool_debug(int *score, int *state, float *dirx, float *diry);
 
 static void put32(FILE *f, uint32_t v) { fputc(v >> 24, f); fputc(v >> 16, f); fputc(v >> 8, f); fputc(v, f); }
 static void chunk(FILE *f, const char *type, const uint8_t *data, uint32_t len) {
@@ -156,6 +157,10 @@ int main(int argc, char **argv) {
             if (app_scene() == 1) {
                 float axis = prism_debug(&score, &state);
                 g_in.pad = 1; g_in.lx = state == 1 && !lonely ? axis : 0.0f;
+            } else if (app_scene() == 2) {
+                float dx, dy;
+                tidepool_debug(&score, &state, &dx, &dy);
+                g_in.pad = 1; g_in.lx = state == 1 && !lonely ? dx : 0.0f; g_in.ly = state == 1 && !lonely ? -dy : 0.0f;
             } else {
                 afterimage_debug(&score, &state, &pkx, &pky, &x, &y);
                 if (state == 1 && !lonely) { g_in.ptr_on = 1; g_in.ptr_x = pkx; g_in.ptr_y = pky; }

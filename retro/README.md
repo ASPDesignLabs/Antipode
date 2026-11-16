@@ -33,11 +33,15 @@ Left and right (arrow keys, a tap or click at either side, a swipe, the stick or
 them on a title or game-over screen; the screen fades out to black and the next one fades in. (Through black because there
 is one palette per frame: two scenes cannot be mixed pixel by pixel.) Mid-run, left and right steer as usual. A small
 `< 1/2 >` hint dissolves in when you arrive or move the mouse; a pointer inside a side strip makes that arrow bigger.
-`?mode=afterimage` or `?mode=prism-run` starts on one.
+`?mode=afterimage`, `?mode=prism-run` or `?mode=tidepool` starts on one.
 
 - **Afterimage**: you glide leaving a trail that ripens into your complement, then kills.
 - **Prism Run**: you fly down a tunnel of rainbow cells and roll it left and right. Your own colour drifts round the wheel;
-  its opposite kills and glows hot wherever it is. Stay on your own colour (it is always a way through, two cells wide).
+  its opposite kills and glows hot wherever it is. Stay on your own colour (it is always a way through, two cells wide). It starts at
+  1.5 rings a second and reaches 6 by the 150th.
+- **Tidepool**: you skim a dark pool leaving a wake; sources at its edges answer with waves in your opposite colour. Where the two
+  stand up together the water kills. Your wake grows with your speed, so slow water is safe water. Collect pearls; the pool pulses
+  faster and gathers more sources as you do.
 
 ### How Afterimage works here
 
@@ -60,6 +64,17 @@ under the ship. Rings are made as you reach them; each has a way through two cel
 so two rings always share a safe cell. Lethal cells are your exact opposite, never a hue next to it, because your colour drifts
 while you cross a ring and a borderline cell would be safe one moment and deadly the next.
 
+### How Tidepool works here
+
+Two small integer wave simulations run on a 160x100 grid (the old ripple algorithm: half the sum of the four neighbours minus the
+last, a little damping), one for your wake and one for the pool's. They pass through each other as real waves do. A cell is one
+palette index made of both heights, `16 + level(yours) * 15 + level(the pool's)`: a **two-dimensional palette**, so blending two
+things is a lookup and nothing is mixed per pixel. The palette gives each combination its colour: your hue where your crests are,
+its opposite where the pool's are, the hues between where they overlap, white-hot where they stand up together. Yours is quantised
+three times finer than the pool's, because a wake is low. The lethal test reads the true heights: the two together at 1,800 kill.
+A wake is raised to your speed (not added to), so it never piles up on a slow boat; at full speed it adds about 700, which is why
+moving through a rising crest is deadly and standing in it is not.
+
 ## Controls
 
 Keyboard (WASD / arrows), mouse (Afterimage heads for the cursor; Prism Run rolls toward its side), touch (the same, by finger),
@@ -67,12 +82,17 @@ gamepad (left stick / d-pad). Any key, click, tap in the middle, or button start
 
 ## What has been tested
 
-- **Native harness:** builds without warnings. Afterimage's bot collects sparks and dies on ripe trail (the refactor to several
-  scenes gives identical runs for the same seed). Prism Run's bot, which follows its own colour, survives 300 s with 5 deaths and a
-  best of 385 rings; with no input you die within about six rings. 0.06 ms (Afterimage) and 0.2 ms (Prism Run) a frame natively.
-- **Chromium, headless:** the web build runs; keyboard, mouse (hover, click, drag) and a simulated gamepad drive it, and every way
-  of switching scenes works, with no errors.
-- **Found by testing, and fixed:** the first Prism Run rings could be unflyable (a one-cell way that moved sideways between rings, and
-  lethal hues next to the opposite that flipped as your colour drifted). Both are in the section above.
+- **Native harness:** builds without warnings. Afterimage's bot gives the same runs as before the other scenes existed (same
+  seed: best 7, 5 deaths in 60 s). Prism Run's bot, which follows its own colour, scored 385 rings with 4 deaths in 300 s at the
+  new, slower start (1.5 rings a second, measured: 6 rings at 5 s, 15 at 10 s, 68 at 30 s, the old top speed by ring 150). Tidepool's
+  bot, which heads for pearls and slows in rising water, collects up to 8 a life with about one death in 20 s; with no input you
+  are safe (it is a pool, not a clock: there is nothing to do but collect). About 0.05 ms (Afterimage), 0.2 ms (Prism Run) and 0.25 ms
+  (Tidepool) a frame natively.
+- **Chromium, headless:** the web build runs; keyboard, mouse (hover, click, drag) and a simulated gamepad drive it. Every way of
+  switching scenes works, through all three and round the ends; `?mode=` picks one. No errors; about 0.14 ms to step and 0.28 ms
+  to draw Tidepool.
+- **Found by testing, and fixed:** Prism Run's first rings could be unflyable (a one-cell way that shifted sideways between rings;
+  lethal hues next to the opposite that flipped as your colour drifted). Tidepool's own wake killed the boat on its own when it
+  moved slowly (the wake was added every step and piled up), and its first waves were too faint to ever be lethal.
 - **Not tested:** an Xbox, a real controller, real touch, or whether the sound is audible. Feel and balance are first guesses;
-  Prism Run speeds up to six rings a second and the late game is hard.
+  Tidepool's strengths (pulse, wake, the lethal height) were set by measurement and a bot, not by a person's hand.

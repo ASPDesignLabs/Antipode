@@ -67,8 +67,8 @@ void best_set(int v);
 
 /* Every scene keeps palette index 15 for its text: the app draws its own < > hints with it. */
 #define I_TEXT_ALL 15
-#define SCENE_COUNT 2
-extern const Scene scene_afterimage, scene_prism;
+#define SCENE_COUNT 3
+extern const Scene scene_afterimage, scene_prism, scene_tidepool;
 
 extern const unsigned char font_vga16[256][16];
 extern const unsigned char font_bios8[256][8];
