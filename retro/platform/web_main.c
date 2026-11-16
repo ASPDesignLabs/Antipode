@@ -28,12 +28,30 @@ EXPORT("web_slot_buf") uint8_t *web_slot_buf(void) { return g_slot; }
 EXPORT("web_slot_load") void web_slot_load(int len) { app_slot_load(g_slot, len); }
 EXPORT("web_slot_take") int web_slot_take(void) { return app_slot_take(g_slot, sizeof g_slot); }
 
+/* the scenes' names, newline-separated, so the page can pick one by name (?mode=) */
+EXPORT("web_scene_names") const char *web_scene_names(void) {
+    static char buf[128];
+    buf[0] = 0;
+    for (int i = 0; i < SCENE_COUNT; i++) {
+        const char *n = app_scene_name(i);
+        size_t len = strlen(buf);
+        if (i) buf[len++] = '\n';
+        while (*n) buf[len++] = *n++;
+        buf[len] = 0;
+    }
+    return buf;
+}
+static int g_first_scene;
+EXPORT("web_select") void web_select(int i) { g_first_scene = i; }              /* before web_start */
+EXPORT("web_scene") int web_scene(void) { return app_scene(); }
+
 EXPORT("web_start") void web_start(void) {
     if (g_started) return;
     g_started = 1;
     if (!g_cfg.volume && !g_cfg.sound) app_default_config(&g_cfg);
     app_set_input(&g_in);
     app_init(&g_cfg);
+    app_select(g_first_scene);
 }
 
 EXPORT("web_key") void web_key(int k, int down) {
@@ -44,6 +62,7 @@ EXPORT("web_key") void web_key(int k, int down) {
 /* the pointer in the picture's pixels, y down; on 0 when it has left or the finger lifted */
 EXPORT("web_pointer") void web_pointer(float x, float y, int on) { g_in.ptr_on = on; if (on) { g_in.ptr_x = x; g_in.ptr_y = y; } }
 EXPORT("web_pointer_down") void web_pointer_down(void) { g_in.ptr_hit = 1; }
+EXPORT("web_pointer_up") void web_pointer_up(float x, float y) { g_in.ptr_x = x; g_in.ptr_y = y; g_in.ptr_up = 1; }
 /* the pad: buttons a bit each (PAD_*), the sticks past their dead zones, y up; present 0 when none */
 EXPORT("web_pad") void web_pad(int present, int buttons, float lx, float ly, float rx, float ry) {
     g_in.pad = present;

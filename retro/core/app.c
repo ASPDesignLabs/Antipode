@@ -1,7 +1,13 @@
 #include "app.h"
 #include "snd.h"
+#include "gfx.h"
 
 #define FADE_SECONDS 0.8
+#define TRANS_SECONDS 0.3           /* each half of a switch: out to black, then in */
+#define ZONE 64                     /* the left and right strips of the picture, in pixels: a tap there switches scenes */
+#define SWIPE 36                    /* a drag this far sideways is a swipe */
+
+static const Scene *const SCENES[SCENE_COUNT] = { &scene_afterimage, &scene_prism };
 
 static struct {
     AppConfig cfg;
@@ -9,6 +15,13 @@ static struct {
     uint32_t seed;
     Frame frame;
     Input *in;
+    int cur;
+    int tr, tr_to; double tr_t;                     /* a switch: 0 none, 1 fading out, 2 fading in */
+    int idle;                                       /* the scene is on a title or game-over screen: left/right switch */
+    float hint;                                     /* seconds the switching hint stays up (it dissolves out) */
+    struct { int down, swiped; float x0, y0; double t; } P;   /* a press that might be a tap or a swipe */
+    float last_x, last_y;
+    int pad_dir;
 } A;
 
 static struct { uint8_t data[16]; int len, dirty; } SLOT;
@@ -21,6 +34,19 @@ void app_default_config(AppConfig *c) {
     c->start_fade = 1;
 }
 
+static void enter_scene(int idx) {
+    const Scene *sc = SCENES[idx];
+    A.cur = idx;
+    A.frame.w = sc->w; A.frame.h = sc->h;
+    A.frame.fade = 1.0f;
+    memset(A.frame.pix, 0, sizeof A.frame.pix);
+    memset(A.frame.pal, 0, sizeof A.frame.pal);
+    A.seed = A.seed * 1664525u + 1013904223u;
+    sc->enter(A.seed);
+    A.hint = 2.5f;
+    A.P.down = 0;
+}
+
 void app_init(const AppConfig *cfg) {
     A.cfg = *cfg;
     A.t = 0;
@@ -28,20 +54,54 @@ void app_init(const AppConfig *cfg) {
     A.seed = 0xA17190DEu;
     snd_init();
     snd_set_volume(cfg->sound ? cfg->volume / 100.0f : 0.0f);
-    A.frame.w = scene_afterimage.w; A.frame.h = scene_afterimage.h;
-    A.frame.fade = 1.0f;
-    memset(A.frame.pix, 0, sizeof A.frame.pix);
-    memset(A.frame.pal, 0, sizeof A.frame.pal);
-    scene_afterimage.enter(A.seed);
+    enter_scene(0);
 }
-
+void app_select(int scene) { if (scene >= 0 && scene < SCENE_COUNT) enter_scene(scene); }
+int app_scene(void) { return A.cur; }
+const char *app_scene_name(int scene) { return scene >= 0 && scene < SCENE_COUNT ? SCENES[scene]->name : ""; }
 void app_set_input(Input *in) { A.in = in; }
 
 static void clear_edges(Input *in) {
     memset(in->hit, 0, sizeof in->hit);
     memset(in->pad_hit, 0, sizeof in->pad_hit);
-    in->ptr_hit = 0;
-    in->act = 0;
+    in->ptr_hit = 0; in->ptr_up = 0; in->act = 0;
+}
+
+static void request_switch(int dir) {
+    if (A.tr) return;
+    A.tr = 1; A.tr_t = 0.0;
+    A.tr_to = ((A.cur + dir) % SCENE_COUNT + SCENE_COUNT) % SCENE_COUNT;
+}
+
+/* What a person asked for this step, on a screen where left and right choose the scene: the arrow keys, Q and E, the
+ * d-pad, the bumpers, the stick pushed over, a swipe, or a tap at either side. Anything else is "go". */
+static void read_switch(const Input *in, double dt, int *cycle, int *act) {
+    *cycle = 0; *act = 0;
+    for (int k = 0; k < KEY_COUNT; k++) if (in->hit[k] && k != KEY_LEFT && k != KEY_RIGHT && k != KEY_Q && k != KEY_E) *act = 1;
+    for (int b = 0; b < PAD_COUNT; b++) if (in->pad_hit[b] && b != PAD_LEFT && b != PAD_RIGHT && b != PAD_LB && b != PAD_RB) *act = 1;
+    if (in->hit[KEY_LEFT] || in->hit[KEY_Q] || in->pad_hit[PAD_LEFT] || in->pad_hit[PAD_LB]) *cycle = -1;
+    if (in->hit[KEY_RIGHT] || in->hit[KEY_E] || in->pad_hit[PAD_RIGHT] || in->pad_hit[PAD_RB]) *cycle = 1;
+    int dir = in->pad ? (in->lx > 0.6f ? 1 : in->lx < -0.6f ? -1 : 0) : 0;      /* the stick, on crossing */
+    if (dir && dir != A.pad_dir) *cycle = dir;
+    A.pad_dir = dir;
+    if (in->ptr_hit) { A.P.down = 1; A.P.swiped = 0; A.P.x0 = in->ptr_x; A.P.y0 = in->ptr_y; A.P.t = 0.0; }
+    if (A.P.down) {
+        A.P.t += dt;
+        float dx = in->ptr_x - A.P.x0, dy = in->ptr_y - A.P.y0;
+        if (in->ptr_on && !A.P.swiped && (dx > SWIPE || dx < -SWIPE) && (dx > 0 ? dx : -dx) > 1.5f * (dy > 0 ? dy : -dy)) {
+            A.P.swiped = 1;
+            *cycle = dx < 0 ? 1 : -1;                                              /* swipe left: the next one */
+        }
+    }
+    if (in->ptr_up) {
+        if (A.P.down && !A.P.swiped && A.P.t < 0.5) {
+            float x = in->ptr_x, dx = in->ptr_x - A.P.x0, dy = in->ptr_y - A.P.y0;
+            if (dx * dx + dy * dy < 14.0f * 14.0f) {                               /* a tap: at the sides it switches, else it goes */
+                if (x < ZONE) *cycle = -1; else if (x > SCENES[A.cur]->w - ZONE) *cycle = 1; else *act = 1;
+            }
+        }
+        A.P.down = 0;
+    }
 }
 
 void app_update(double dt) {
@@ -49,21 +109,46 @@ void app_update(double dt) {
     if (dt > 0.25) dt = 0.25;
     A.t += dt;
     if (A.fade_t < FADE_SECONDS) A.fade_t += dt;
-    Input *in = A.in;
-    if (in) {                                       /* any key, button or press is an "act": start, retry */
-        int act = in->ptr_hit;
-        for (int k = 0; k < KEY_COUNT; k++) act |= in->hit[k];
-        for (int b = 0; b < PAD_COUNT; b++) act |= in->pad_hit[b];
-        in->act = act != 0;
+    if (A.hint > 0.0f) A.hint -= (float)dt;
+
+    if (A.tr) {
+        A.tr_t += dt;
+        if (A.tr == 1 && A.tr_t >= TRANS_SECONDS) { enter_scene(A.tr_to); A.tr = 2; A.tr_t = 0.0; }
+        else if (A.tr == 2 && A.tr_t >= TRANS_SECONDS) A.tr = 0;
     }
-    scene_afterimage.update(dt, in ? in : &none);
+
+    const Scene *sc = SCENES[A.cur];
+    Input *in = A.in;
+    A.idle = A.tr == 0 && sc->idle && sc->idle();
+    Input local = in ? *in : none;
+    if (in) {
+        int cycle, act;
+        if (A.idle) {
+            read_switch(in, dt, &cycle, &act);
+            if (in->ptr_on && ((in->ptr_x - A.last_x) > 0.5f || (A.last_x - in->ptr_x) > 0.5f || (in->ptr_y - A.last_y) > 0.5f || (A.last_y - in->ptr_y) > 0.5f)) A.hint = 1.6f;   /* the mouse moved: show the way */
+            if (cycle) { request_switch(cycle); A.hint = 1.0f; }
+        } else {
+            act = 0;
+            for (int k = 0; k < KEY_COUNT; k++) act |= in->hit[k];
+            for (int b = 0; b < PAD_COUNT; b++) act |= in->pad_hit[b];
+            A.P.down = 0;
+        }
+        A.last_x = in->ptr_x; A.last_y = in->ptr_y;
+        local.act = act != 0 && !A.tr;
+    }
+    sc->update(dt, &local);
     if (in) clear_edges(in);
 }
 
-int app_mode(int *w, int *h) { *w = A.frame.w; *h = A.frame.h; return 0; }
+int app_mode(int *w, int *h) { *w = A.frame.w; *h = A.frame.h; return A.cur; }
 const Frame *app_frame(void) { return &A.frame; }
 
-static float fade_k(void) { return smoothstepf(0.0f, (float)FADE_SECONDS, (float)A.fade_t); }
+static float fade_k(void) {
+    float k = smoothstepf(0.0f, (float)FADE_SECONDS, (float)A.fade_t);
+    if (A.tr == 1) k *= 1.0f - smoothstepf(0.0f, TRANS_SECONDS, (float)A.tr_t);   /* the palette is the only thing there is to blend: out to black, in from it */
+    else if (A.tr == 2) k *= smoothstepf(0.0f, TRANS_SECONDS, (float)A.tr_t);
+    return k;
+}
 
 /* the palette, 6 bits a channel, to 256 packed pixels: palette animation costs these 256 entries, not the picture */
 static void build_lut(uint32_t lut[256], int bgr) {
@@ -80,9 +165,25 @@ static void build_lut(uint32_t lut[256], int bgr) {
     }
 }
 
+/* The switching hint: arrows at the sides and "< n/N >" along the foot, dissolving out by dither (one palette entry can't
+ * blend). A pointer inside a side strip makes that arrow bigger: that is where a click goes. */
+static void draw_hint(Frame *f) {
+    if (!A.idle || A.tr || A.hint <= 0.0f || SCENE_COUNT < 2) return;
+    float a = clampf(A.hint / 0.7f, 0.0f, 1.0f);
+    int w = f->w, h = f->h;
+    char line[16] = "<  1/2  >";
+    line[3] = (char)('1' + A.cur); line[5] = (char)('0' + SCENE_COUNT);
+    gfx_text_a(f, (w - gfx_text_width(line, 1)) / 2, h - 12, line, I_TEXT_ALL, 0, 1, a);
+    int ptr = A.in && A.in->ptr_on;
+    int left = ptr && A.in->ptr_x < ZONE, right = ptr && A.in->ptr_x > w - ZONE;
+    gfx_text_a(f, left ? 6 : 10, h / 2 - (left ? 16 : 8), "<", I_TEXT_ALL, 1, left ? 2 : 1, a);
+    gfx_text_a(f, right ? w - 22 : w - 18, h / 2 - (right ? 16 : 8), ">", I_TEXT_ALL, 1, right ? 2 : 1, a);
+}
+
 void app_present(uint32_t *dst, int bgr) {
     uint32_t lut[256];
-    scene_afterimage.render(&A.frame);
+    SCENES[A.cur]->render(&A.frame);
+    draw_hint(&A.frame);
     build_lut(lut, bgr);
     int n = A.frame.w * A.frame.h;
     const uint8_t *src = A.frame.pix;
@@ -100,21 +201,21 @@ void app_present_rgb(uint8_t *rgb, int *w, int *h) {
     }
 }
 
-int slot_read(uint8_t *buf, int cap) {
-    if (SLOT.len <= 0 || SLOT.len > cap) return 0;
-    memcpy(buf, SLOT.data, (size_t)SLOT.len);
-    return SLOT.len;
-}
-void slot_write(const uint8_t *buf, int len) {
-    if (!buf || len <= 0 || len > (int)sizeof SLOT.data) return;
-    memcpy(SLOT.data, buf, (size_t)len); SLOT.len = len; SLOT.dirty = 1;
+/* best scores: a little-endian u16 a scene */
+int best_get(void) { return A.cur < 8 ? SLOT.data[A.cur * 2] | (SLOT.data[A.cur * 2 + 1] << 8) : 0; }
+void best_set(int v) {
+    if (A.cur >= 8) return;
+    SLOT.data[A.cur * 2] = (uint8_t)(v & 255); SLOT.data[A.cur * 2 + 1] = (uint8_t)((v >> 8) & 255);
+    if (SLOT.len < 16) SLOT.len = 16;
+    SLOT.dirty = 1;
 }
 void app_slot_load(const uint8_t *buf, int len) {
     if (!buf || len <= 0 || len > (int)sizeof SLOT.data) return;
-    memcpy(SLOT.data, buf, (size_t)len); SLOT.len = len; SLOT.dirty = 0;
+    memcpy(SLOT.data, buf, (size_t)len); SLOT.len = 16; SLOT.dirty = 0;
 }
 int app_slot_take(uint8_t *buf, int cap) {
-    if (!SLOT.dirty) return 0;
+    if (!SLOT.dirty || cap < 16) return 0;
     SLOT.dirty = 0;
-    return slot_read(buf, cap);
+    memcpy(buf, SLOT.data, 16);
+    return 16;
 }

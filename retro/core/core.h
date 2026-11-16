@@ -32,7 +32,7 @@ typedef struct Frame {
     uint8_t pal[256][3];            /* VGA DAC: 6 bits per channel, 0..63 */
 } Frame;
 
-enum { KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE, KEY_ENTER, KEY_ESC, KEY_M, KEY_ANY, KEY_COUNT };
+enum { KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_W, KEY_A, KEY_S, KEY_D, KEY_SPACE, KEY_ENTER, KEY_ESC, KEY_M, KEY_Q, KEY_E, KEY_ANY, KEY_COUNT };
 /* A game controller, by XInput's layout. */
 enum { PAD_A, PAD_B, PAD_X, PAD_Y, PAD_LB, PAD_RB, PAD_VIEW, PAD_MENU, PAD_LS, PAD_RS,
        PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_LT, PAD_RT, PAD_COUNT };
@@ -47,6 +47,7 @@ typedef struct Input {
     int ptr_on;
     float ptr_x, ptr_y;
     int ptr_hit;                    /* it went down since the last update */
+    int ptr_up;                     /* it was released since the last update (ptr_x/y: where) */
     int act;                        /* filled by the app: any key, button or press landed this step */
 } Input;
 
@@ -57,13 +58,17 @@ typedef struct Scene {
     void (*enter)(uint32_t seed);   /* (re)start from the top */
     void (*update)(double dt, const Input *in);
     void (*render)(Frame *f);       /* draw the current state */
+    int  (*idle)(void);             /* on its title screen: safe to switch away (and the app draws < > for touch) */
 } Scene;
 
-/* One saved number (the best score). The app keeps the bytes, the platform stores them. */
-int  slot_read(uint8_t *buf, int cap);              /* the slot's length, 0 when empty */
-void slot_write(const uint8_t *buf, int len);
+/* Best scores, one per scene (the current one's), 0..65535. The app keeps the bytes, the platform stores them. */
+int  best_get(void);
+void best_set(int v);
 
-extern const Scene scene_afterimage;
+/* Every scene keeps palette index 15 for its text: the app draws its own < > hints with it. */
+#define I_TEXT_ALL 15
+#define SCENE_COUNT 2
+extern const Scene scene_afterimage, scene_prism;
 
 extern const unsigned char font_vga16[256][16];
 extern const unsigned char font_bios8[256][8];
