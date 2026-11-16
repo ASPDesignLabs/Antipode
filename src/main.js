@@ -10,6 +10,7 @@
     fail.textContent = String(err && err.message || err) + '\n\n' + navigator.userAgent;
     fail.hidden = false;
     console.error(err);
+    if (!/[?&]noretro\b/.test(location.search)) { location.replace('retro/play/index.html' + location.search); return; }   // WebGL failed after all: the CPU-only version
     // WebGL is out; see whether WebGPU would have fared any better on this device.
     if (navigator.gpu && navigator.gpu.requestAdapter) {
       const add = function (t) { fail.textContent += '\n' + t; };

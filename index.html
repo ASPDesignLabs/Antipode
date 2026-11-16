@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#000000">
 <title>Antipode</title>
+<script>
+// No WebGL (the Xbox's Edge refuses it): the CPU-only version, retro/play/, is made for exactly that. Add ?noretro to stay and see why.
+(function () {
+  var go = function () { if (!/[?&]noretro\b/.test(location.search)) location.replace("retro/play/index.html" + location.search); };
+  try { var c = document.createElement("canvas"); if (!(c.getContext("webgl2") || c.getContext("webgl") || c.getContext("experimental-webgl"))) go(); } catch (e) { go(); }
+})();
+</script>
 <style>
   :root { --hd: 200; }
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }

@@ -31,6 +31,11 @@ build/web/index.html: build/web/antipode.wasm web/index.html web/antipode.js
 
 web: build/web/index.html
 
+# the page the Xbox is sent to: rebuild it and refresh the committed copy
+play: build/web/index.html
+	@mkdir -p play
+	cp build/web/index.html play/index.html
+
 smoke: build/host
 	@mkdir -p build/smoke
 	./build/host shot 1,2 build/smoke/menu 3
@@ -41,4 +46,4 @@ smoke: build/host
 
 clean:
 	rm -rf build
-.PHONY: all host web smoke clean
+.PHONY: all host web play smoke clean
