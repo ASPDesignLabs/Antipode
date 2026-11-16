@@ -38,6 +38,11 @@ void snd_sfx_note(int id, int note) {
             voice(W_BELL, f, 0, 0.9f, 0.5f, 0.0f, 0.5f);
             voice(W_NOISE, 0, 0, 0.06f, 0.05f, 0.0f, 0.5f);
             break; }
+        case SFX_TIER:                                                            /* a step up: bells climbing, a kick under them, a cymbal swelling */
+            voice(W_KICK, 140.0f, 45.0f, 0.30f, 0.55f, 0.00f, 0.5f);
+            for (int i = 0; i < 4; i++) voice(W_BELL, mfreq(72 + 4 * (i == 1) + 7 * (i == 2) + 12 * (i == 3)), 0, 1.0f, 0.42f, 0.09f * (float)i, 0.35f + 0.1f * (float)i);
+            voice(W_CYMBAL, 0, 0, 1.3f, 0.12f, 0.27f, 0.5f);
+            break;
         case SFX_CRASH: {                                                         /* the carol breaks off... */
             voice(W_KICK, 150.0f, 42.0f, 0.38f, 0.85f, 0.00f, 0.5f);
             voice(W_CYMBAL, 0, 0, 0.60f, 0.16f, 0.00f, 0.55f);                   /* ...a splash as it stops... */
@@ -58,6 +63,7 @@ void snd_sfx_note(int id, int note) {
         return;
     }
     if (id == SFX_CRASH) id = SFX_DIE;                                         /* the plain game has no trombone */
+    if (id == SFX_TIER) id = SFX_START;
     static const float R12[12] = { 1.0f, 1.0595f, 1.1225f, 1.1892f, 1.2599f, 1.3348f, 1.4142f, 1.4983f, 1.5874f, 1.6818f, 1.7818f, 1.8877f };
     switch (id) {
     case SFX_START:
@@ -137,15 +143,17 @@ TRK(K_JOY,    230, 8, 60, 0, 1, T_JOY,    B_JOY,    M_JOY);
 TRK(K_WISH,   270, 6, 55, 0, 0, T_WISH,   B_WISH,   M_WISH);
 static const Track *const TRACKS[] = { 0, &K_SILENT, &K_JINGLE, &K_DECK, &K_JOY, &K_WISH };
 
-static struct { int id, idx, bar, loops, bump, ubase, half; float rem, upos, bar_t, tempo; } M;
+static struct { int id, idx, bar, loops, bump, ubase, half, layers; float rem, upos, bar_t, tempo; } M;
 
 void snd_music_stop(void) { M.id = MU_NONE; }
 int snd_music_id(void) { return M.id; }
 void snd_music_tempo(float mul) { M.tempo = clampf(mul, 0.4f, 2.5f); }
 void snd_music_bump(int semis) { M.bump = semis; }
+void snd_music_layers(int mask) { M.layers = mask; }
+int snd_music_layers_get(void) { return M.layers; }
 void snd_music_play(int id) {
     if (!g_theme.on || id <= MU_NONE || id > MU_WISH) { M.id = MU_NONE; return; }
-    M.id = id; M.idx = -1; M.rem = 0.0f; M.upos = 0.0f; M.bar = -1; M.bar_t = (float)TRACKS[id]->bar; M.loops = 0; M.bump = 0; M.half = 1;   /* bar_t starts a bar full: the first bass note sounds at once, once */
+    M.id = id; M.idx = -1; M.rem = 0.0f; M.upos = 0.0f; M.bar = -1; M.bar_t = (float)TRACKS[id]->bar; M.loops = 0; M.bump = 0; M.half = 1; M.layers = 0;   /* bar_t starts a bar full: the first bass note sounds at once, once */
     M.ubase = 0; M.tempo = 1.0f;
 }
 
@@ -165,6 +173,7 @@ static void music_step(const Track *k, float du, float unit_sec) {
         if (n.m >= 0) {
             float len = (float)n.l * unit_sec;
             voice(W_BELL, mfreq(shape(k, n.m) + trans), 0, len * 1.7f > 1.6f ? 1.6f : len * 1.7f + 0.25f, 0.42f, 0.0f, 0.5f);
+            if (M.layers & ML_SHIMMER) voice(W_BELL, mfreq(shape(k, n.m) + trans + 12), 0, len * 1.2f + 0.2f, 0.16f, 0.02f, 0.7f);   /* a shimmer, an octave up */
         }
         M.rem += (float)n.l;
     }
@@ -173,18 +182,28 @@ static void music_step(const Track *k, float du, float unit_sec) {
         M.bar_t -= (float)k->bar; M.bar++; M.half = 0;
         int root = k->bass[M.bar % k->nb];
         voice(W_TRI, mfreq(shape(k, root) + trans), 0, (float)k->bar * unit_sec * 0.95f, 0.30f, 0.0f, 0.4f);
+        if (M.layers & ML_DRUMS) voice(W_KICK, 150.0f, 42.0f, 0.30f, 0.50f, 0.0f, 0.5f);                                         /* the kick on the bar */
+        if (M.layers & ML_BRASS) {                                                                                               /* and brass, a root and a fifth held */
+            voice(W_BRASS, mfreq(shape(k, root) + trans + 12), 0, (float)k->bar * unit_sec * 0.9f, 0.10f, 0.0f, 0.35f);
+            voice(W_BRASS, mfreq(shape(k, root + 7) + trans + 12), 0, (float)k->bar * unit_sec * 0.9f, 0.07f, 0.0f, 0.65f);
+        }
     } else if (!M.half && M.bar_t >= (float)k->bar * 0.5f) {
         M.half = 1;
         int root = k->bass[M.bar % k->nb] + 7;
         voice(W_TRI, mfreq(shape(k, root) + trans), 0, (float)k->bar * unit_sec * 0.45f, 0.18f, 0.0f, 0.6f);
+        if (M.layers & ML_DRUMS) voice(W_KICK, 140.0f, 45.0f, 0.25f, 0.40f, 0.0f, 0.5f);                                         /* and the kick again, half way */
     }
 #endif
 #ifdef SND_TEST_MELODY
     return;                                                     /* the tests listen to the tune alone */
 #endif
-    if (k->shaker) {                                            /* sleigh bells on the off-beats */
+    if (k->shaker || (M.layers & ML_SHAKER)) {                  /* sleigh bells on the off-beats */
         int u = (int)M.upos;
-        if (u != M.ubase) { M.ubase = u; if (u & 1) voice(W_NOISE, 0, 0, 0.05f, 0.07f, 0.0f, (u & 2) ? 0.35f : 0.65f); }
+        if (u != M.ubase) {
+            M.ubase = u;
+            if (u & 1) voice(W_NOISE, 0, 0, 0.05f, 0.07f, 0.0f, (u & 2) ? 0.35f : 0.65f);
+            if ((M.layers & ML_DRUMS) && (u & 1)) voice(W_CYMBAL, 0, 0, 0.07f, 0.05f, 0.0f, 0.55f);                                 /* and a hi-hat tick between */
+        }
     }
 }
 

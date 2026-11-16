@@ -7,6 +7,7 @@ int main(int argc, char **argv) {
     if (argc < 4) return 1;
     int id = atoi(argv[1]); float secs = (float)atof(argv[2]);
     g_theme.on = 1; snd_init(); snd_set_volume(0.7f); snd_set_fade(1.0f); snd_music_play(id);
+    if (argc > 4) snd_music_layers(atoi(argv[4]));
     int total = (int)(secs * SND_RATE), maxv = 0;
     static int16_t buf[2 * 512];
     FILE *f = fopen(argv[3], "wb");

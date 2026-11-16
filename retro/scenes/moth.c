@@ -33,7 +33,8 @@
 enum { I_CORE = 1, I_WING = 2, I_YOU = 3, I_NOT = 4, I_RING = 5, I_PLATE = 6, I_GOLD = 7, I_NOSE = 8, I_COAL = 9, I_TEXT = 15 };
 enum { ST_MENU, ST_PLAY, ST_DEAD };
 
-typedef struct { float x, y, vx, vy, r, sp; } Blob;                    /* sp: how fast it is, against a plain one */
+enum { KD_SNOW, KD_COAL, KD_BOSS };                                    /* in season: snow, a heavy lump of coal, the Grand Snowman */
+typedef struct { float x, y, vx, vy, r, sp; int kind; } Blob;           /* sp: how fast it is, against a plain one */
 typedef struct { float x, y, t; int kind; } Gift;                      /* in season: a present, for a while */
 enum { FX_NONE = -1, FX_COCOA, FX_CANE, FX_MAGNET };
 #define SNOWMAN_R 24.0f             /* in season, a blob this big is a finished snowman */
@@ -47,8 +48,10 @@ static struct {
     double clock, dead_t, spawn_t, life;
     Gift g[3]; int ng;              /* presents lying about */
     int fx, combo, snowmen;         /* what a present has given you; merges in a row; snowmen finished */
-    double fx_t, last_merge, msg_t, gift_t;
+    double fx_t, last_merge, msg_t, gift_t, fx_max;
     const char *msg;
+    int diff, tier, boss_hp, boss_done, bells, stick;   /* the list you chose, the step you have reached, the boss, the last bells left */
+    double invuln, boss_shed;
 } S;
 
 static uint16_t acc[W * H];         /* the dark's field */
@@ -106,14 +109,40 @@ static void build_field(void) {
     memset(acc, 0, sizeof acc);
     memset(lum, 0, sizeof lum);
     for (int i = 0; i < S.nb; i++) splat(&S.b[i]);
-    splat_light(S.x, S.y, LIGHT_R + (g_theme.on && S.fx == FX_COCOA ? 14 : 0) + (g_theme.on ? (int)(2.0f * m_sin((float)S.clock * 11.0f) + 1.5f * m_sin((float)S.clock * 23.0f)) : 0));   /* a lantern's flame is never still */
+    splat_light(S.x, S.y, LIGHT_R + (g_theme.on && S.fx == FX_COCOA ? 14 + 4 * S.tier : 0) + (g_theme.on ? (int)(2.0f * m_sin((float)S.clock * 11.0f) + 1.5f * m_sin((float)S.clock * 23.0f)) : 0));   /* a lantern's flame is never still */
 }
 static int field_at(float x, float y) { int ix = clampi((int)(x + 0.5f), 0, W - 1), iy = clampi((int)(y + 0.5f), 0, H - 1); return acc[iy * W + ix]; }
 
 /* ---- the game ---- */
-static float spawn_gap(void) { float v = 4.2f - 0.07f * (float)S.life - (g_theme.on ? 0.35f * (float)(S.snowmen / 5) : 0.0f); return v < 1.7f ? 1.7f : v; }   /* in season the list grows with every five snowmen */
-static float vmax_for(const Blob *b) {                          /* bigger is slower; all of them quicken with the time you last */
-    float base = 26.0f + 0.35f * (float)(S.life < 70.0 ? S.life : 70.0);
+/* In season the night is climbed in steps. Each is reached by score, and each asks more: faster, more of them, and new things sent.
+ * Nice List is the gentler way up (later steps, slower, more presents, two last bells); Naughty List asks sooner and harder and pays
+ * half as much again. The last step needs the boss to be beaten first. */
+static const int THR_NICE[5] = { 0, 15, 40, 80, 150 }, THR_NAUGHTY[5] = { 0, 9, 24, 48, 90 };
+static const char *const TIER_NAME[5] = { "Little Nibbles", "Stocking Stuffers", "Naughty List", "Christmas Eve", "Midnight" };
+static const char *const TIER_BANNER[5] = { "", "Stocking Stuffers!", "The Naughty List!", "Christmas Eve: the Grand Snowman!", "Midnight!" };
+static const float GAP_T[5] = { 4.2f, 3.6f, 3.0f, 2.6f, 2.2f };
+static const int MUSIC_LAYERS[5] = { 0, ML_SHAKER, ML_SHAKER | ML_SHIMMER, ML_SHAKER | ML_SHIMMER | ML_DRUMS | ML_BRASS, ML_ALL };
+static const int MUSIC_KEY[5] = { 0, 2, 4, 5, 7 };
+
+static float dm_gap(void) { return S.diff ? 0.85f : 1.0f; }
+static float dm_spd(void) { return S.diff ? 1.12f : 1.0f; }
+static void add_score(int pts) { S.score += g_theme.on && S.diff ? (pts * 3 + 1) / 2 : pts; }
+static int tier_for(int score) {
+    const int *th = S.diff ? THR_NAUGHTY : THR_NICE;
+    int t = 0;
+    for (int i = 1; i < 5; i++) if (score >= th[i]) t = i;
+    return t == 4 && !S.boss_done ? 3 : t;
+}
+static Blob *boss(void) { for (int i = 0; i < S.nb; i++) if (S.b[i].kind == KD_BOSS) return &S.b[i]; return 0; }
+
+static float spawn_gap(void) {
+    if (!g_theme.on) { float v = 4.2f - 0.07f * (float)S.life; return v < 1.7f ? 1.7f : v; }
+    float v = GAP_T[S.tier] * dm_gap() - 0.015f * (float)(S.life < 60.0 ? S.life : 60.0);
+    return v < 1.3f ? 1.3f : v;
+}
+static float vmax_for(const Blob *b) {                          /* bigger is slower; all of them quicken as the night goes on */
+    float base = g_theme.on ? (24.0f + 6.0f * (float)S.tier) * dm_spd() + 0.15f * (float)(S.life < 60.0 ? S.life : 60.0)
+                            : 26.0f + 0.35f * (float)(S.life < 70.0 ? S.life : 70.0);
     return base * clampf(1.0f - 0.016f * (b->r - 9.0f), 0.35f, 1.0f) * b->sp;
 }
 
@@ -127,8 +156,12 @@ static void spawn_blob(void) {
         float dx = x - S.x, dy = y - S.y;
         if (dx * dx + dy * dy > 110.0f * 110.0f || tries == 19) { b->x = x; b->y = y; break; }
     }
-    b->r = 8.0f + rf() * 4.0f; b->vx = b->vy = 0.0f; b->sp = 1.0f;
-    if (g_theme.on && S.life > 15.0 && rf() < 0.30f) { b->r = 6.5f; b->sp = 1.5f; }   /* in season, after a while, small quick icicles are sent too */
+    b->r = 8.0f + rf() * 4.0f; b->vx = b->vy = 0.0f; b->sp = 1.0f; b->kind = KD_SNOW;
+    if (g_theme.on) {                                           /* the list sends different things as the steps go up */
+        float pick = rf();
+        if (S.tier >= 2 && pick < 0.22f) { b->kind = KD_COAL; b->r = 13.0f + rf() * 3.0f; b->sp = 0.65f; }                  /* heavy lumps of coal */
+        else if (S.tier >= 1 && pick < (S.tier >= 2 ? 0.22f : 0.0f) + 0.12f + 0.04f * (float)S.tier) { b->r = 6.5f; b->sp = 1.5f; }   /* small quick icicles */
+    }
     S.nb++;
 }
 
@@ -137,20 +170,24 @@ static void reset_run(void) {
     S.score = 0; S.nb = 0; S.life = 0.0; S.spawn_t = 2.0;
     S.x = W * 0.5f; S.y = H * 0.5f; S.vx = S.vy = 0.0f;
     S.ng = 0; S.fx = FX_NONE; S.fx_t = 0.0; S.combo = 0; S.last_merge = -9.0; S.snowmen = 0; S.msg_t = 0.0; S.gift_t = 14.0;
+    S.tier = 0; S.boss_done = 0; S.boss_hp = 0; S.bells = S.diff ? 1 : 2; S.invuln = 0.0; S.boss_shed = 0.0; S.fx_max = 6.0;
     spawn_blob(); spawn_blob();
 }
-static void begin(void) { reset_run(); S.state = ST_PLAY; snd_sfx(SFX_START); snd_music_play(MU_WISH); }
+static void music_progress(void);
+static void begin(void) { reset_run(); S.state = ST_PLAY; snd_sfx(SFX_START); snd_music_play(MU_WISH); if (g_theme.on) music_progress(); }
 
 static void enter(uint32_t seed) {
     build_tables();
     S.rng = seed ? seed : 1u;
     S.state = ST_MENU; S.clock = 0.0; S.dead_t = 0.0;
     S.best = best_get();
+    S.diff = g_theme.on ? (pref_get(0) ? 1 : 0) : 0;
+    S.stick = 0;
     S.hue = theme_base_hue(&S.rng);
     S.nb = 0; S.x = W * 0.5f; S.y = H * 0.5f; S.vx = S.vy = 0.0f; S.life = 0.0;
     for (int i = 0; i < 4; i++) {                               /* behind the title: a few drifting, unhurried */
         Blob *b = &S.b[S.nb++];
-        b->x = 30.0f + rf() * (W - 60); b->y = 30.0f + rf() * (H - 60); b->r = 9.0f + rf() * 6.0f; b->sp = 1.0f;
+        b->x = 30.0f + rf() * (W - 60); b->y = 30.0f + rf() * (H - 60); b->r = 9.0f + rf() * 6.0f; b->sp = 1.0f; b->kind = KD_SNOW;
         float a = rf() * TAU_F; b->vx = m_cos(a) * 9.0f; b->vy = m_sin(a) * 9.0f;
     }
 }
@@ -185,20 +222,74 @@ static int steer(const Input *in, float *dx, float *dy, float *mag) {
     return 0;
 }
 
-/* in season: a snowman that reaches full size is finished. It earns a bonus and a fanfare, waddles off, and leaves a present */
-static void spawn_gift(float x, float y) {
+/* in season: presents, and what the steps do */
+static void spawn_gift_kind(float x, float y, int kind) {
     if (S.ng >= 3) { for (int i = 1; i < 3; i++) S.g[i - 1] = S.g[i]; S.ng = 2; }
     Gift *g = &S.g[S.ng++];
-    g->x = clampf(x, 14.0f, W - 14.0f); g->y = clampf(y, 24.0f, H - 24.0f); g->t = 12.0f; g->kind = (int)(rng_next(&S.rng) % 3u);
+    g->x = clampf(x, 14.0f, W - 14.0f); g->y = clampf(y, 24.0f, H - 24.0f); g->t = 12.0f; g->kind = kind;
 }
+static void spawn_gift(float x, float y) { spawn_gift_kind(x, y, (int)(rng_next(&S.rng) % 3u)); }
+
+static void music_progress(void) {                               /* the carol grows with the steps: more bells, a shimmer, drums and brass; a higher key */
+    snd_music_layers(MUSIC_LAYERS[S.tier]);
+    snd_music_bump(MUSIC_KEY[S.tier] + (S.score / 12 > 3 ? 3 : S.score / 12));
+}
+
+static void spawn_boss(void) {
+    if (S.nb >= MAXB) S.nb = MAXB - 1;
+    Blob *b = &S.b[S.nb++];
+    b->kind = KD_BOSS; b->r = 30.0f; b->sp = 0.75f; b->vx = b->vy = 0.0f;
+    b->x = S.x < W * 0.5f ? W + 36.0f : -36.0f; b->y = rf() * H;
+    S.boss_hp = 3; S.boss_shed = 3.5;
+}
+
+static void tier_up(int t) {                                     /* a banner, a fanfare, a present near you for the new step, and a bigger carol */
+    S.tier = t;
+    S.msg = TIER_BANNER[t]; S.msg_t = 2.6;
+    snd_sfx(SFX_TIER);
+    float a = rf() * TAU_F;
+    spawn_gift(S.x + m_cos(a) * 55.0f, S.y + m_sin(a) * 55.0f);
+    if (t == 3 && !S.boss_done && !boss()) spawn_boss();
+    if (t == 4) snd_music_play(MU_JINGLE);                       /* the finale: Jingle Bells, all of it */
+    music_progress();
+}
+static void check_tier(void) { int t = tier_for(S.score); while (S.tier < t) tier_up(S.tier + 1); }
+
+static void last_bell(void) {                                    /* about to be caught: a bell rings, the list freezes and is pushed back */
+    S.bells--; S.invuln = 1.4; S.fx = FX_CANE; S.fx_max = S.fx_t = 4.0;
+    for (int i = 0; i < S.nb; i++) {
+        float dx = S.b[i].x - S.x, dy = S.b[i].y - S.y, d = m_sqrt(dx * dx + dy * dy) + 0.001f;
+        if (d < 110.0f) { float push = 110.0f - d + 20.0f; S.b[i].x += dx / d * push; S.b[i].y += dy / d * push; S.b[i].vx = S.b[i].vy = 0.0f; }
+    }
+    S.msg = "Last bell! The list freezes!"; S.msg_t = 2.2;
+    snd_sfx(SFX_TIER);
+}
+
+static void defeat_boss(void) {
+    for (int i = 0; i < S.nb; i++) if (S.b[i].kind == KD_BOSS) {
+        for (int k = 0; k < 3; k++) spawn_gift_kind(S.b[i].x + (float)(k - 1) * 22.0f, S.b[i].y, k);   /* one of each present */
+        S.b[i] = S.b[--S.nb]; break;
+    }
+    S.boss_done = 1; S.boss_hp = 0;
+    add_score(25);
+    S.msg = "The Grand Snowman melts! +25"; S.msg_t = 2.8;
+    snd_sfx(SFX_TIER);
+}
+
+/* A snowman that reaches full size is finished: a bonus, a fanfare, a present, and it waddles off. While the Grand Snowman is
+ * about, each one pelts it with snowballs; the third melts it. */
 static void finish_snowmen(void) {
     for (int i = 0; i < S.nb; i++) {
-        if (S.b[i].r < SNOWMAN_R) continue;
+        if (S.b[i].kind != KD_SNOW || S.b[i].r < SNOWMAN_R) continue;
         spawn_gift(S.b[i].x, S.b[i].y);
-        S.score += 5; S.snowmen++;
-        S.msg = S.snowmen % 5 == 0 ? "The naughty list grows!" : "A snowman! +5"; S.msg_t = 1.8;
-        snd_sfx(SFX_START);
-        S.b[i] = S.b[--S.nb]; i--;
+        add_score(5); S.snowmen++;
+        S.b[i] = S.b[--S.nb];
+        Blob *bs = boss();
+        if (bs) {
+            S.boss_hp--; bs->r = 18.0f + 4.0f * (float)S.boss_hp;
+            if (S.boss_hp <= 0) defeat_boss(); else { S.msg = "A snowman pelts the Grand Snowman!"; S.msg_t = 2.0; snd_sfx(SFX_START); }
+        } else { S.msg = "A snowman! +5"; S.msg_t = 1.8; snd_sfx(SFX_START); }
+        i = -1;                                                  /* look again: the list has moved up */
     }
 }
 
@@ -209,15 +300,25 @@ static void merge_blobs(void) {                                 /* touching blob
             float dx = b->x - a->x, dy = b->y - a->y, d2 = dx * dx + dy * dy, rs = (a->r + b->r) * 0.78f;
             if (d2 >= rs * rs) continue;
             float nr2 = a->r * a->r + b->r * b->r;
+            int melt = 0;
+            if (g_theme.on) {
+                if (a->kind == KD_BOSS || b->kind == KD_BOSS) nr2 = 1e9f;                          /* the Grand Snowman does not merge: it only pushes */
+                else if ((a->kind == KD_COAL) != (b->kind == KD_COAL)) {                           /* coal melts into what it touches, half its size */
+                    const Blob *c = a->kind == KD_COAL ? a : b, *o = c == a ? b : a;
+                    nr2 = o->r * o->r + 0.5f * c->r * c->r; melt = 1;
+                }
+            }
             if (nr2 > RMAX * RMAX) {                            /* as big as it gets: they only push apart */
                 float d = m_sqrt(d2) + 0.001f, push = (rs - d) * 0.5f;
                 a->x -= dx / d * push; a->y -= dy / d * push; b->x += dx / d * push; b->y += dy / d * push;
                 continue;
             }
             float wa = a->r * a->r, wb = b->r * b->r, w = wa + wb;
+            float nsp = melt ? (a->kind == KD_COAL ? b->sp : a->sp) : (a->sp * wa + b->sp * wb) / w;
+            int nkind = melt ? KD_SNOW : a->kind;
             a->x = (a->x * wa + b->x * wb) / w; a->y = (a->y * wa + b->y * wb) / w;
             a->vx = (a->vx * wa + b->vx * wb) / w; a->vy = (a->vy * wa + b->vy * wb) / w;
-            a->sp = (a->sp * wa + b->sp * wb) / w;
+            a->sp = nsp; a->kind = nkind;
             a->r = m_sqrt(nr2);
             *b = S.b[--S.nb];
             if (S.state == ST_PLAY) {
@@ -226,7 +327,10 @@ static void merge_blobs(void) {                                 /* touching blob
                     S.combo = S.clock - S.last_merge < 2.5 ? S.combo + 1 : 1;
                     S.last_merge = S.clock; pts = S.combo > 5 ? 5 : S.combo;
                 }
-                S.score += pts; snd_sfx_note(SFX_PICKUP, S.score); snd_music_bump(S.score > 7 ? 7 : S.score);   /* each merge lifts the carol a semitone */
+                add_score(pts);
+                if (melt) { add_score(2); S.msg = "Coal melted! +2"; S.msg_t = 1.4; }
+                snd_sfx_note(SFX_PICKUP, S.score);
+                if (g_theme.on) music_progress(); else snd_music_bump(S.score > 7 ? 7 : S.score);   /* each merge lifts the carol a little */
             }
             j = i;                                              /* look again from the start of this one */
         }
@@ -258,12 +362,30 @@ static void move_blobs(double dt, int chase) {
     }
 }
 
+static void menu_choose(int d) { S.diff = d; pref_set(0, d); snd_sfx_note(SFX_PICKUP, 2 + 3 * d); }
+
+/* a tap on one of the two bars on the title (x 40..280; Nice List at y 106..119, Naughty List at 122..135) */
+static int moth_tap(float x, float y) {
+    if (!g_theme.on || S.state != ST_MENU || x < 40.0f || x > 280.0f) return 0;
+    if (y >= 106.0f && y <= 119.0f) { menu_choose(0); return 1; }
+    if (y >= 122.0f && y <= 135.0f) { menu_choose(1); return 1; }
+    return 0;
+}
+
 static void update(double dt, const Input *in) {
     S.clock += dt;
     if (S.state == ST_MENU) {
         move_blobs(dt, 0);
         merge_blobs();
-        if (S.nb < 3) { S.b[S.nb] = (Blob){ 30.0f + rf() * (W - 60), 30.0f + rf() * (H - 60), 0.0f, 0.0f, 10.0f, 1.0f }; S.nb++; }
+        if (S.nb < 3) { S.b[S.nb] = (Blob){ 30.0f + rf() * (W - 60), 30.0f + rf() * (H - 60), 0.0f, 0.0f, 10.0f, 1.0f, KD_SNOW }; S.nb++; }
+        if (g_theme.on) {                                       /* the title chooses the list: up and down, a pad's d-pad or stick, or a tap on a bar */
+            int dir = in->pad ? (in->ly > 0.6f ? -1 : in->ly < -0.6f ? 1 : 0) : 0;
+            int up = in->hit[KEY_UP] || in->hit[KEY_W] || in->pad_hit[PAD_UP] || (dir == -1 && S.stick != -1);
+            int dn = in->hit[KEY_DOWN] || in->hit[KEY_S] || in->pad_hit[PAD_DOWN] || (dir == 1 && S.stick != 1);
+            S.stick = dir;
+            if (up && S.diff != 0) menu_choose(0);
+            if (dn && S.diff != 1) menu_choose(1);
+        }
         if (in->act) begin();
         return;
     }
@@ -275,7 +397,8 @@ static void update(double dt, const Input *in) {
         return;
     }
     S.life += dt;
-    snd_music_tempo(0.9f + 0.012f * (float)(S.life < 50.0 ? S.life : 50.0));
+    if (g_theme.on) snd_music_tempo(0.95f + 0.07f * (float)S.tier + 0.004f * (float)(S.life < 50.0 ? S.life : 50.0));   /* it quickens with the steps */
+    else snd_music_tempo(0.9f + 0.012f * (float)(S.life < 50.0 ? S.life : 50.0));
     float dx, dy, mag, tvx = 0.0f, tvy = 0.0f;
     float spd = g_theme.on && S.fx == FX_COCOA ? 72.0f * 1.45f : 72.0f;                 /* hot cocoa: quicker */
     if (steer(in, &dx, &dy, &mag)) { tvx = dx * mag * spd; tvy = dy * mag * spd; }
@@ -288,13 +411,13 @@ static void update(double dt, const Input *in) {
     if (S.spawn_t <= 0.0) { spawn_blob(); S.spawn_t = spawn_gap(); }
     if (g_theme.on) {                                           /* presents: left by snowmen, and now and then by the list itself */
         S.gift_t -= dt;
-        if (S.gift_t <= 0.0) { spawn_gift(30.0f + rf() * (W - 60), 30.0f + rf() * (H - 60)); S.gift_t = 24.0 + rf() * 8.0; }
+        if (S.gift_t <= 0.0) { spawn_gift(30.0f + rf() * (W - 60), 30.0f + rf() * (H - 60)); S.gift_t = (24.0 + rf() * 8.0) * (S.diff ? 1.3 : 1.0); }
         for (int i = 0; i < S.ng; i++) {
             S.g[i].t -= (float)dt;
             float gx = S.x - S.g[i].x, gy = S.y - S.g[i].y;
             if (S.g[i].t <= 0.0f) { S.g[i] = S.g[--S.ng]; i--; continue; }
             if (gx * gx + gy * gy < 10.0f * 10.0f) {
-                S.fx = S.g[i].kind; S.fx_t = 6.0;
+                S.fx = S.g[i].kind; S.fx_max = S.fx_t = 6.0 + (S.fx == FX_COCOA ? 1.5 * (double)S.tier : 0.0);   /* cocoa lasts longer higher up */
                 S.msg = S.fx == FX_COCOA ? "Hot cocoa: you're quicker!" : S.fx == FX_CANE ? "Candy cane: they freeze!" : "Magnet: they stick together!"; S.msg_t = 2.0;
                 snd_sfx_note(SFX_PICKUP, 8 + 2 * S.fx);
                 S.g[i] = S.g[--S.ng]; i--;
@@ -305,9 +428,26 @@ static void update(double dt, const Input *in) {
     }
     move_blobs(dt, 1);
     merge_blobs();
-    if (g_theme.on) finish_snowmen();
+    if (g_theme.on) {
+        finish_snowmen();
+        check_tier();
+        if (S.invuln > 0.0) S.invuln -= dt;
+        Blob *bs = boss();
+        if (bs) {                                                /* the Grand Snowman sheds snowballs as it comes */
+            S.boss_shed -= dt;
+            if (S.boss_shed <= 0.0 && S.nb < MAXB) {
+                float ang = rf() * TAU_F;
+                S.b[S.nb++] = (Blob){ bs->x, bs->y, m_cos(ang) * 45.0f, m_sin(ang) * 45.0f, 7.0f, 1.1f, KD_SNOW };
+                S.boss_shed = S.diff ? 3.0 : 4.0;
+            }
+        }
+    }
     build_field();                                              /* the field the picture and the lethal test both read */
-    if (field_at(S.x, S.y) >= SURF + 8) die();
+    if (field_at(S.x, S.y) >= SURF + 8) {
+        if (g_theme.on && S.invuln > 0.0) { }                    /* the last bell's grace */
+        else if (g_theme.on && S.bells > 0) last_bell();
+        else die();
+    }
 }
 
 /* ---- drawing ---- */
@@ -355,6 +495,11 @@ static void draw_faces(Frame *f) {
         const Blob *b = &S.b[i];
         if (b->r < 13.0f) continue;
         int bx = (int)(b->x + 0.5f), by = (int)(b->y + 0.5f), r = (int)b->r, big = r >= 18, ex = (int)(b->r * 0.32f), ey = (int)(b->r * 0.22f);
+        if (b->kind == KD_COAL) {                                /* a lump of coal: glowing eyes and a scowl, no nose */
+            gfx_rect(f, bx - ex - 1, by - ey, 2, 2, I_GOLD); gfx_rect(f, bx + ex - 1, by - ey, 2, 2, I_GOLD);
+            for (int k = -3; k <= 3; k++) gfx_px(f, bx + k, by + (int)(b->r * 0.5f) + (k * k > 4 ? 1 : 0), I_GOLD);
+            continue;
+        }
         gfx_rect(f, bx - ex - (big ? 1 : 0), by - ey, big ? 2 : 1, big ? 2 : 1, I_COAL);
         gfx_rect(f, bx + ex, by - ey, big ? 2 : 1, big ? 2 : 1, I_COAL);
         float dx = S.x - b->x, dy = S.y - b->y, d = m_sqrt(dx * dx + dy * dy) + 0.001f;
@@ -363,6 +508,7 @@ static void draw_faces(Frame *f) {
         for (int k = -2; k <= 2; k++) gfx_px(f, bx + k * (big ? 2 : 1), by + (int)(b->r * 0.46f) - ((k == 2 || k == -2) ? 1 : 0), I_COAL);
         if (big) { gfx_px(f, bx, by + (int)(b->r * 0.72f), I_COAL); gfx_px(f, bx, by + (int)(b->r * 0.88f), I_COAL); }
         if (r >= 19) { gfx_rect(f, bx - r / 2 - 1, by - r + 1, r + 2, 2, I_COAL); gfx_rect(f, bx - r / 3, by - r - 5, r * 2 / 3, 6, I_COAL); }
+        if (b->kind == KD_BOSS) gfx_rect(f, bx - r / 3, by - r - 2, r * 2 / 3, 1, I_GOLD);   /* the Grand Snowman's hat-band */
     }
 }
 
@@ -402,6 +548,9 @@ static void render(Frame *f) {
         plate(f, 3, 3, 46, 30);
         gfx_rect(f, 6, 6, 10, 10, I_YOU); gfx_text8(f, 20, 7, "YOU", I_TEXT, 1);
         gfx_rect(f, 6, 20, 10, 10, I_NOT); gfx_text8(f, 20, 21, g_theme.on ? "NAUGHTY" : "DARK", I_TEXT, 1);
+        if (g_theme.on && S.state == ST_PLAY) for (int i = 0; i < S.bells; i++) {          /* the last bells you have left */
+            gfx_disc(f, 10 + i * 12, H - 10, 4, I_GOLD); gfx_rect(f, 9 + i * 12, H - 6, 2, 2, I_CORE);
+        }
     }
     if (S.state == ST_PLAY) {
         gfx_itoa(S.score, num);
@@ -412,13 +561,23 @@ static void render(Frame *f) {
                 const char *nm = S.fx == FX_COCOA ? "Hot cocoa" : S.fx == FX_CANE ? "Candy cane" : "Magnet";
                 plate(f, W / 2 - 52, H - 24, 104, 18);
                 gfx_text8_c(f, H - 22, nm, I_TEXT, 1);
-                gfx_rect(f, W / 2 - 42, H - 11, (int)(S.fx_t / 6.0 * 84.0), 3, I_GOLD);
+                gfx_rect(f, W / 2 - 42, H - 11, (int)(S.fx_t / S.fx_max * 84.0), 3, I_GOLD);
+            }
+            {                                                    /* the step you have reached, and the boss's health while it lives */
+                const char *tn = TIER_NAME[S.tier]; int tw = 8 * (int)strlen(tn) + 12;
+                plate(f, (W - tw) / 2, 24, tw, 13); gfx_text8_c(f, 27, tn, I_TEXT, 1);
+            }
+            int by = 38;
+            if (boss()) {
+                plate(f, W / 2 - 60, by, 120, 13); gfx_text8_c(f, by + 3, "Grand Snowman", I_TEXT, 1);
+                for (int i = 0; i < 3; i++) gfx_rect(f, W / 2 + 62 + i * 7, by + 3, 5, 6, i < S.boss_hp ? I_GOLD : I_PLATE);
+                by += 14;
             }
             if (S.combo >= 2 && S.clock - S.last_merge < 2.5) {  /* a combo, while it lasts */
                 char cb[16] = "Combo x"; gfx_itoa(S.combo > 5 ? 5 : S.combo, cb + 7);
-                plate(f, W / 2 - 40, 24, 80, 13); gfx_text8_c(f, 26, cb, I_TEXT, 1);
+                plate(f, W / 2 - 40, by, 80, 13); gfx_text8_c(f, by + 2, cb, I_TEXT, 1); by += 14;
             }
-            if (S.msg_t > 0.0) { int mw = 8 * (int)strlen(S.msg) + 12; plate(f, (W - mw) / 2, 48, mw, 14); gfx_text8_c(f, 51, S.msg, I_TEXT, 1); }
+            if (S.msg_t > 0.0) { int mw = 8 * (int)strlen(S.msg) + 12; plate(f, (W - mw) / 2, by, mw, 14); gfx_text8_c(f, by + 3, S.msg, I_TEXT, 1); }
         }
     } else if (S.state == ST_DEAD) {
         int r = (int)(S.dead_t * 130.0);
@@ -431,22 +590,45 @@ static void render(Frame *f) {
         for (int i = 0; i < 5; i++) line[i] = "BEST "[i];
         gfx_itoa(S.best, line + 5);
         gfx_text8_c(f, 114, line, I_TEXT, 1);
+        if (g_theme.on) gfx_text8_c(f, 126, TIER_NAME[S.tier], I_TEXT, 1);       /* how far up the list you got */
         if (S.dead_t > 0.6) gfx_text8_c(f, 140, "PRESS TO RETRY", I_TEXT, 1);
     } else {
         if (g_theme.on) { gfx_garland(f, S.clock, I_NOT, I_YOU, I_TEXT, I_GOLD); gfx_sparkles(f, S.clock, I_TEXT); }
-        plate(f, 24, 10, 272, 52); plate(f, 10, 112, 300, 72);
-        gfx_text16_c(f, 14, g_theme.on ? "LANTERN" : "MOTH", I_TEXT, 2);
-        gfx_text8_c(f, 50, g_theme.on ? "A LANTERN ON A SNOWY NIGHT" : "A LIGHT IN A DARK THAT ANSWERS", I_TEXT, 1);
-        gfx_text8_c(f, 118, g_theme.on ? "THE NAUGHTY LIST CHASES YOUR LANTERN" : "THE DARK CHASES YOU IN YOUR OPPOSITE", I_TEXT, 1);
-        gfx_text8_c(f, 130, g_theme.on ? "Roll its snowballs into snowmen," : "LURE IT TOGETHER: TOUCHING, IT MERGES", I_TEXT, 1);
-        if (g_theme.on) gfx_text8_c(f, 141, "then catch the presents they leave!", I_TEXT, 1);
-        gfx_text8_c(f, g_theme.on ? 154 : 148, g_theme.on ? "Steer: keys, stick, mouse or touch" : "STEER: KEYS / STICK / MOUSE / TOUCH", I_TEXT, 1);
-        gfx_text8_c(f, g_theme.on ? 166 : 162, g_theme.on ? "Press any key" : "PRESS ANY KEY", I_TEXT, 1);
+        if (g_theme.on) {
+            plate(f, 24, 10, 272, 40); plate(f, 10, 54, 300, 46); plate(f, 10, 138, 300, 40);
+            gfx_text16_c(f, 13, "LANTERN", I_TEXT, 2);
+            gfx_text8_c(f, 36, "A LANTERN ON A SNOWY NIGHT", I_TEXT, 1);
+            gfx_text8_c(f, 58, "The Naughty List chases your lantern.", I_TEXT, 1);
+            gfx_text8_c(f, 69, "Roll its snowballs into snowmen,", I_TEXT, 1);
+            gfx_text8_c(f, 80, "then catch the presents they leave!", I_TEXT, 1);
+            static const char *const DN[2] = { "Nice List - a gentler night", "Naughty List - harder, x1.5" };
+            for (int d = 0; d < 2; d++) {                          /* the two ways up the list; the chosen one is framed and marked */
+                int y = 106 + 16 * d;
+                plate(f, 40, y, 240, 13);
+                if (S.diff == d) {
+                    gfx_rect(f, 40, y, 240, 1, I_GOLD); gfx_rect(f, 40, y + 12, 240, 1, I_GOLD);
+                    gfx_rect(f, 40, y, 1, 13, I_GOLD); gfx_rect(f, 279, y, 1, 13, I_GOLD);
+                    gfx_rect(f, 41, y + 1, 1, 11, I_GOLD); gfx_rect(f, 278, y + 1, 1, 11, I_GOLD);
+                }
+                gfx_text8_c(f, y + 3, DN[d], I_TEXT, 1);
+            }
+            gfx_text8_c(f, 142, "Up / down or tap to choose", I_TEXT, 1);
+            gfx_text8_c(f, 154, "Steer: keys, stick, mouse or touch", I_TEXT, 1);
+            gfx_text8_c(f, 166, "Press any key", I_TEXT, 1);
+        } else {
+            plate(f, 24, 10, 272, 52); plate(f, 10, 112, 300, 72);
+            gfx_text16_c(f, 14, "MOTH", I_TEXT, 2);
+            gfx_text8_c(f, 50, "A LIGHT IN A DARK THAT ANSWERS", I_TEXT, 1);
+            gfx_text8_c(f, 118, "THE DARK CHASES YOU IN YOUR OPPOSITE", I_TEXT, 1);
+            gfx_text8_c(f, 130, "LURE IT TOGETHER: TOUCHING, IT MERGES", I_TEXT, 1);
+            gfx_text8_c(f, 148, "STEER: KEYS / STICK / MOUSE / TOUCH", I_TEXT, 1);
+            gfx_text8_c(f, 162, "PRESS ANY KEY", I_TEXT, 1);
+        }
     }
 }
 
 static int idle(void) { return S.state == ST_MENU || (S.state == ST_DEAD && S.dead_t > 0.6); }
-const Scene scene_moth = { "MOTH", W, H, enter, update, render, idle };
+const Scene scene_moth = { "MOTH", W, H, enter, update, render, idle, moth_tap, 1 };
 
 /* for the test harness only: a bot's heading. It keeps clear of the dark, more of the big ones and of what is close, and of
  * the walls, and circles a little so it is not pinned in a corner. */
