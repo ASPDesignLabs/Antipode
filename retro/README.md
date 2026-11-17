@@ -63,6 +63,14 @@ is one palette per frame: two scenes cannot be mixed pixel by pixel.) Mid-run, l
 
 - **Afterimage** (in season **Sparkler**): you glide leaving a trail that ripens into your complement, then kills. The trail is a wire of
   fairy lights that goes red-orange-yellow-green; the border is a candy cane; sparks are baubles; your head is a sparkler.
+  In season it is a race against **Grinches** (rival sparklers with a Santa hat, pale trails, and a face): they steer for the baubles too and
+  your score has a score to beat. **Your ripe trail stops a Grinch** (+5, and three of their haul come back to you); **theirs stops you at
+  once**. The game is endless and follows your score: a Grinch runs at 62% of your speed at the start and at most 95% of it, its trail is
+  12 ticks long and grows to a little less than yours, it sees a little further and turns a little better, and there are one, then two (8
+  baubles), then three (24) of them. They turn at walls rather than die on them, and when a bauble is close they stop looking. You also lose
+  if the Grinches' haul gets **7 ahead of your score**. Six presents turn up now and then (or drop from a caught Grinch): a **candy cane**
+  (your trail ripens for them sooner), **hot cocoa** (quicker), a **snow globe** (they slow to 40%), **mistletoe** (baubles come to you),
+  a **Jingle Bell** (one free save, also from a wall) and a **star** (trails cannot hurt you for 5 s). A gauge in the corner shows who is ahead.
 - **Prism Run** (in season **Caroling Run**): you fly down a tunnel and roll it left and right. *Plain:* rainbow cells, and your own colour
   drifts round the wheel; its opposite kills and glows hot. It starts at 1.5 rings a second and reaches 6 by the 150th. *In season:* the
   walls are red candy canes, holly with berries and white snow, edged in garland; **what kills is an empty space**, a hollow panel with
@@ -98,6 +106,11 @@ is a 256-entry table asked of the pixels under the head (CPU collision, no read-
 expired slot to the background. Indices 0..15: an 8-step dithered background ramp, the border (which pulses in the
 palette), the spark, the head, the death ring and the text. On death the whole palette's hue turns half a circle: the world
 goes to its antipode.
+
+In season every trail pixel also remembers who laid it (a byte map beside the picture), because that decides who it kills: your trail is
+lethal to a Grinch once ripe (a candy cane makes that sooner), a Grinch's is lethal to you always. Their trail is cut shorter than yours by
+a per-tick sweep of their own slot at their limit, and painted from the last 16 palette entries (age by level, in a pale tint with stripes),
+so the season's ring is 56 slots where the plain game's is 60.
 
 ### How Prism Run works here
 
@@ -146,7 +159,11 @@ gamepad (left stick / d-pad). Any key, click, tap in the middle, or button start
 - **`make test-game`** tests the rules one at a time. Lantern: a snowman is finished at full size (+5, a present, gone); a present gives its
   effect; a candy cane freezes the blobs; a magnet draws them together (the gap shrinks to under 60% of what it is without); cocoa makes you
   at least 25% quicker; merges in a row make a combo (1 then 2); the steps come at their scores on each list and Midnight waits for the boss; the boss comes at Christmas Eve, does not merge, is pelted by finished snowmen and melts at the third (+25, three presents); coal appears only from the third step, melts into snow (the stated size and +2) and never becomes a snowman; coal is slower; last bells are two and one and save you once each; the Naughty List scores x1.5 and sends them sooner and faster; cocoa lasts longer higher up; the carol gains a layer at each step; the title's choice by key and by tap, and that it is kept; none of it
-  applies in the plain game. Caroling Run: over 1,500 generated rings every way through is two solid cells and neighbouring rings share a
+  applies in the plain game. Sparkler (`build/sparkler_fx`): a Grinch's speed, trail and number follow your score and never reach yours; your
+  ripe trail eliminates one (+5, a present drops, three of their haul return), young trail does not, a candy cane makes it sooner, a new
+  arrival is safe a moment; one turns from close trail and a wall but not from far trail; its trail is gone at its limit while yours stays;
+  theirs kills you, a star lets you through, a Jingle Bell saves you once (also from a wall); seven behind loses; each of the six presents
+  does what it says; none of it exists in the plain game. Caroling Run: over 1,500 generated rings every way through is two solid cells and neighbouring rings share a
   solid cell, the verses alternate your colour, a hollow cell is always the other colour, the first rings are safe, only a hollow cell
   kills, and the snow falls 93 px a second at the start and 295 at full speed.
 - **`make test-audio`** (needs numpy): every note of every carol, across loops (so key changes too), is within 40 cents of its score (542
@@ -168,5 +185,6 @@ gamepad (left stick / d-pad). Any key, click, tap in the middle, or button start
   - **The carols and the crash by ear.** The tunes are written from memory as our own arrangements; only Deck the Halls was checked against a
     transcription I could find. Silent Night's rhythm is simplified. The tests prove the synth plays the score, not that the score is right.
   - A colour-blind player or a simulator; an Xbox; a real controller or touch; sound over a speaker.
-  - Balance in season, above all Lantern's steps, boss, coal and last bells (the strengths and timings were set by unit tests and a bot that
+  - Balance in season, above all Sparkler's Grinches (their speed, trail length, count and the seven-bauble lead were set by unit tests and a simple
+    bot that dies to its own trail within seconds; whether they can be caught and whether they are fair is for a person to say) and Lantern's steps, boss, coal and last bells (the strengths and timings were set by unit tests and a bot that
     ignores presents; nobody has beaten the boss, by bot or by hand).
