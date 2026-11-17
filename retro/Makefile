@@ -63,8 +63,14 @@ build/prism_fx: test/prism_fx.c scenes/prism.c core/gfx.c core/theme.c core/snd.
 	@mkdir -p build
 	$(CC) -O1 -std=gnu11 -fno-math-errno -Icore -o $@ test/prism_fx.c core/gfx.c core/theme.c core/snd.c core/font_vga.c -lm
 
-test-game: build/moth_fx build/prism_fx
+# Sparkler's season rules: the Grinches, the presents, falling behind.
+build/sparkler_fx: test/sparkler_fx.c scenes/afterimage.c core/gfx.c core/theme.c core/snd.c core/font_vga.c core/*.h
+	@mkdir -p build
+	$(CC) -O1 -std=gnu11 -fno-math-errno -Icore -o $@ test/sparkler_fx.c core/gfx.c core/theme.c core/snd.c core/font_vga.c -lm
+
+test-game: build/moth_fx build/prism_fx build/sparkler_fx
 	./build/moth_fx
+	./build/sparkler_fx
 	./build/prism_fx
 
 smoke: build/host
